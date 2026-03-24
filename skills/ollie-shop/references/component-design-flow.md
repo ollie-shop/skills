@@ -5,6 +5,7 @@ A guided workflow for going from a design reference (Figma, screenshot, business
 The goal is not just to write code -- it's to help the developer build a **mental model** of what the component does, why it exists, and how it fits into the checkout flow.
 
 ## Table of Contents
+0. [Step 0: Template Gap Analysis](#step-0-template-gap-analysis)
 1. [Step 1: Gather Context](#step-1-gather-context)
 2. [Step 2: Identify Business Rules](#step-2-identify-business-rules)
 3. [Step 3: Map to Slots](#step-3-map-to-slots)
@@ -12,6 +13,39 @@ The goal is not just to write code -- it's to help the developer build a **menta
 5. [Step 5: Check the Component Library](#step-5-check-the-component-library)
 6. [Step 6: Implement](#step-6-implement)
 7. [Step 7: Validate & Deploy](#step-7-validate--deploy)
+
+---
+
+## Step 0: Template Gap Analysis
+
+Before building anything, understand **what the native template already does**. The biggest waste of effort is building a custom component for something the template handles out of the box.
+
+Load the template reference file (`references/templates/default.md`) and compare against the client's requirements.
+
+### Process
+
+1. **List all client requirements** -- every business rule, UX behavior, and visual element the client expects in the checkout.
+2. **Cross-reference with the template's native capabilities** -- for each requirement, check:
+   - Is it fully handled by the native template? (No custom component needed)
+   - Is it partially handled? (Extend or override via a slot)
+   - Is it completely absent? (Full custom component required)
+3. **Produce the gap table**:
+
+| Requirement | Native Support | Gap Type | Recommended Action |
+|-------------|---------------|----------|-------------------|
+| _requirement from client_ | Full / Partial / None | None / Partial / Full | Use native / Extend via slot / Build custom component |
+
+4. **Prioritize the gaps** -- which custom components are critical for launch vs. nice-to-have?
+5. **Validate assumptions** -- if unsure whether the template handles something, test it with `ollie dev` against the actual template before committing to build.
+
+### Why this matters
+
+- Avoids **duplicate effort** -- building what already exists
+- Prevents **conflicts** -- a custom component fighting the native template's behavior
+- Gives the developer a **clear scope** -- "I need to build 3 components, not 12"
+- Creates a **shared understanding** with the client about what's custom vs. standard
+
+The output of this step is the **component backlog** -- the list of gaps that need custom components. Each gap becomes a candidate for Steps 1-7.
 
 ---
 

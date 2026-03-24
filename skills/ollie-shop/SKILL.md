@@ -45,7 +45,9 @@ When the developer needs **inspiration or reference implementations** for common
 ### 4. Component Design Flow
 When the developer needs help **going from a design/requirement to an implementation plan**.
 - Read `references/component-design-flow.md` for the guided workflow.
-- This flow helps translate Figma designs, screenshots, documented business rules, or existing website behavior into a structured implementation plan.
+- This flow starts with a **Template Gap Analysis** (Step 0) that compares client requirements against what the native template already handles, producing a clear component backlog.
+- Template capabilities are documented per template in `references/templates/` (e.g., `references/templates/default.md`).
+- Then guides through: Gather Context, Identify Business Rules, Map to Slots, Design Contract, Check Library, Implement, Validate & Deploy.
 
 ---
 
@@ -119,3 +121,4 @@ When the developer provides Figma files or screenshots as reference:
 | Reusable component patterns | `assets/component-library.csv` |
 | Design-to-code workflow | `references/component-design-flow.md` |
 | Business rules API | `references/business-rules-api.md` |
+| Template native capabilities | `references/templates/default.md` |
