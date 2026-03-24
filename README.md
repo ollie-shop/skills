@@ -45,7 +45,6 @@ The component library (`assets/component-library.csv`) is a growing catalog of c
 - **path** -- Reference implementation path
 - **tags** -- For semantic search and matching
 - **complexity** -- low / medium / high
-- **platform** -- agnostic or platform-specific (e.g., vtex)
 
 ### Design Flow
 
