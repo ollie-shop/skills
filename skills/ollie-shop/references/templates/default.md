@@ -20,7 +20,7 @@ This document describes what the **default checkout template** provides out of t
 
 ## Checkout Flow
 
-The default template implements a **linear, multi-step checkout** with progressive disclosure. Steps are configured via a `defaultSteps` array and routed through a `StepManager` component.
+The default template implements a **linear, multi-step checkout** with progressive disclosure. Steps are defined in a configuration array and routed by a step manager.
 
 | Step | ID | URL | displayCondition | Description |
 |------|----|-----|------------------|-------------|
@@ -37,7 +37,7 @@ The Cart page lives at `/checkout/cart` and is separate from the step flow.
 Each step in the `defaultSteps` array has:
 - **`id`**: Unique identifier, used as `?step=` param
 - **`name`**: Display name
-- **`page`**: Component to render (maps to built-in pages or a custom `<Slot>`)
+- **`page`**: Page to render (maps to built-in pages or a custom slot)
 - **`summary`**: Label for the collapsed summary row on subsequent steps
 - **`displayCondition`**: `"smart"` (auto-show based on session validity), `"byCondition"` (conditional), or `"required"` (always show)
 - **`displayMode`**: `"Default"` (two-column layout) or `"Full"` (single-column, no sidebar)
@@ -48,7 +48,7 @@ Each step in the `defaultSteps` array has:
 - Forward navigation: primary CTA button (e.g., "Continue to Payment", "Complete with Credit card").
 - Backward navigation: text link (e.g., "Return to Cart", "Return to Shipping").
 - Header always shows: store logo + "Back to Cart" link.
-- **Auto-redirect**: If a user navigates to a step without completing prerequisites, `getStepIncompleteToRedirect()` redirects to the first incomplete step. Empty cart redirects to `/cart`.
+- **Auto-redirect**: If a user navigates to a step without completing prerequisites, the template redirects to the first incomplete step. Empty cart redirects to `/cart`.
 
 ---
 
@@ -144,7 +144,7 @@ The Contact step has no dedicated page — it is embedded as the first section w
 - **Email domain spell-checker**: suggests corrections for common typos (e.g., "gmial.com" → "gmail.com") via `@zootools/email-spell-checker`
 - Once submitted, the contact section collapses into a summary row: "Contact" label + person icon + email + edit button
 - The shipping/address input appears below
-- **Returning users**: If a logged-in user is detected, a `ModalUserIdentified` appears to confirm identity or allow switching accounts
+- **Returning users**: If a logged-in user is detected, a modal appears to confirm identity or allow switching accounts
 
 ---
 
@@ -168,7 +168,7 @@ Once resolved:
 - **"Shipping and Pickup" heading** with tab-based selector:
   - **Shipping** tab: icon + "Shipping" + eligibility badge
   - **Pickup** tab: icon + "Pickup" + eligibility badge (disabled when no pickup locations available)
-  - **Custom delivery** tab: supported via `ModalCustomDelivery` for non-standard options
+  - **Custom delivery** tab: supports non-standard delivery options via a dedicated modal
 
 - **Method list** (radio-style cards):
   - Each method shows: ETA (e.g., "in 6 days"), method name (e.g., "VTEX Delivery"), price
@@ -179,15 +179,15 @@ Once resolved:
 ### Pickup Flow
 
 When "Pickup" tab is selected and eligible:
-- `PackagePickup` component renders pickup location options
-- Each location shows availability badges (`PickupAvailabilityBadge`)
-- Address availability checking (`use-address-availability` hook)
+- Pickup location options are rendered with selection
+- Each location shows availability badges
+- Address availability is checked automatically
 
 ### Unavailable Items
 
 If items in the cart are not available for the selected shipping method:
-- `PackageUnavailable` component renders a list of unavailable items
-- `UnavailableItemsConfirmModal` asks the user to confirm or remove items
+- A list of unavailable items is displayed
+- A confirmation modal asks the user to confirm or remove unavailable items
 - Step validation fails if unavailable items exist (triggers redirect)
 
 ### Scheduled Delivery Modal
@@ -232,7 +232,7 @@ This step appears between shipping method selection and payment. It collects the
 
 **Validation**: Uses Zod schema validation with `react-hook-form`. Fields have max length counters and special character validation for international addresses (Unicode-aware regex). Document/CPF validation available for Brazilian stores.
 
-**Returning users**: Can select from previously saved addresses via `ModalEditAddressesDelivery`, or add a new one.
+**Returning users**: Can select from previously saved addresses or add a new one.
 
 ### Navigation
 
@@ -259,12 +259,12 @@ This step appears between shipping method selection and payment. It collects the
 
 ### Gift Card
 
-- Native gift card input and management (`GiftCard` component)
-- If gift card covers the full order amount: `GiftCardFullPaidModal` appears, other payment methods are disabled, and `GiftCardPaidBanner` shows the applied amount
+- Native gift card input and management
+- If gift card covers the full order amount: a confirmation modal appears, other payment methods are disabled, and a banner shows the applied amount
 
 ### Saved Cards
 
-- `SavedCardOption` component for returning users with stored payment methods
+- Returning users can select from previously stored payment cards
 - Shows masked card number, brand icon, and selection radio
 
 ### Payment Methods (Accordion Radio List)
@@ -289,13 +289,13 @@ All sensitive fields are rendered inside **PCI-compliant iframes** hosted on `pc
 Additional options:
 - **"Save card in my account"** checkbox (checked by default)
 - **"Billing address same as shipping address"** checkbox (checked by default) — shows address preview below
-- **Installments**: Fetched dynamically via `use-fetch-installments` hook based on selected card and order total
+- **Installments**: Fetched dynamically based on selected card and order total
 
 ### Payment Verification
 
-After external payment redirects (e.g., PayPal popup, Pix), a `VerifyTransaction` component handles the callback:
+After external payment redirects (e.g., PayPal popup, Pix), the template handles the verification callback:
 - Detects `?og=orderGroup` URL param
-- Calls `gatewayCallbackAction` to verify payment status
+- Calls the gateway callback to verify payment status
 - On success: redirects to `/order/{orderGroup}`
 - On failure: removes param and shows error toast
 
@@ -326,8 +326,8 @@ This is a standalone page rendered after successful payment — not a checkout s
 
 ### Platform-Specific Content
 
-- **Bank Invoice** (`PlatformBankInvoice`): Renders boleto/bank invoice for VTEX
-- **Payment Conditions** (`PlatformConditions`): Post-purchase payment details (Pix QR code modal, PagaLeve details)
+- **Bank Invoice**: Renders boleto/bank invoice for VTEX stores
+- **Payment Conditions**: Post-purchase payment details (Pix QR code modal, PagaLeve details)
 
 ---
 
@@ -372,7 +372,7 @@ These rules are **already handled** by the native template. Custom components sh
 | Step summary collapse | All | Completed steps collapse into summary rows with edit buttons |
 | Step auto-redirect | All | Navigating to an incomplete step redirects to first missing prerequisite |
 | reCAPTCHA | Payment | Google reCAPTCHA v3 protection |
-| i18n / Internationalization | All | Full internationalization via `next-intl`; locale-aware formatting |
+| i18n / Internationalization | All | Full internationalization via `next-intl`; all UI text, labels, and messages are customizable through message overrides — no custom components needed for text changes |
 
 ---
 
@@ -386,7 +386,7 @@ These rules are **already handled** by the native template. Custom components sh
 - Forward: primary CTA button
 - Backward: text link (e.g., "Return to Cart", "Return to Shipping")
 - "Back to Cart" link always available in header
-- Mobile: breadcrumb step indicator (`StepBreadcrumb`)
+- Mobile: breadcrumb step indicator
 
 ### Responsiveness
 
@@ -410,10 +410,10 @@ These rules are **already handled** by the native template. Custom components sh
 ### Loading States
 
 - Loading spinner on coupon validation
-- Skeleton loaders during shipping package loading (`SkeletonPackages`)
+- Skeleton loaders during shipping package loading
 - "Apply" buttons disabled during async operations
 - "Waiting for contact email" / "Waiting for address" placeholder text for locked sections
-- `PaymentLoadingModal` during payment processing
+- Loading modal during payment processing
 - Disabled CTA buttons until required data is provided
 
 ### Error Handling
@@ -422,7 +422,7 @@ These rules are **already handled** by the native template. Custom components sh
   - Alert icon
   - Descriptive error message
   - Dismiss button
-- `UnauthorizedPaymentModal` for payment failures
+- Error modal for unauthorized/failed payments
 - Required field indicators (*) on form fields
 - Inline field-level validation errors via `react-hook-form`
 - Failed API operations restore previous UI state (e.g., cart item removal rollback)
@@ -445,13 +445,18 @@ These rules are **already handled** by the native template. Custom components sh
 - "Save card in my account" opt-in (not silent)
 - Guest/login enforcement via feature flags
 
+### Custom Messaging & Theming
+
+- **All UI text, labels, and messages** are fully customizable through `next-intl` message overrides — changing button labels, step titles, error messages, shipping method names, or any visible string does not require custom components
+- **Visual theming** (fonts, colors, spacing, border-radius, etc.) is handled through the platform's design token system — no custom CSS or components needed for brand styling
+
 ### Observability
 
 - **Grafana Faro** integration for real-time observability
 - Tracked actions: `begin_checkout`, `changeQuantity`, `removeFromCart`, `navigateToOrder`, `selectPayment`, `placeOrder`, `updateAddress`, `updateReceiver`
 - Per-action timing, success/failure tracking
 - GA4 analytics events (e.g., `begin_checkout`, order conversion)
-- `PageViewTracker` for page-level analytics
+- Page view tracking for analytics
 
 ---
 
@@ -573,7 +578,7 @@ The template uses a `<Slot id="...">` component (from `@ollie-shop/react`) as th
 
 ### Adding Custom Steps
 
-Custom steps can be added to the checkout flow via the store's `props.steps` configuration array. The `StepManager` renders custom steps using the `<Slot>` mechanism:
+Custom steps can be added to the checkout flow via the store's `props.steps` configuration array. Custom steps are rendered using the slot mechanism:
 
 ```typescript
 // Example: Adding a custom "Review" step before payment
@@ -621,7 +626,7 @@ Use this table when comparing client requirements against native capabilities:
 |-------------|---------------|-----|--------|
 | _e.g., "Show loyalty points in cart"_ | No | Full gap | Build custom component for `cart_sidebar_totalizer` or `cart_totalizer` slot |
 | _e.g., "Coupon input"_ | Yes (built-in) | None | Use native — no custom component needed |
-| _e.g., "Custom shipping labels"_ | Partial (shows method name + ETA but no custom labels) | Partial gap | Extend via `shipping_title` or `shipping_list_packages` slot |
+| _e.g., "Custom shipping labels"_ | Yes (i18n message overrides) | None | All UI text and labels are customizable via message overrides — no custom component needed |
 | _e.g., "Gift card payment"_ | Yes (built-in) | None | Native gift card flow; extend via `payment_option_gift_card` slot if customization needed |
 | _e.g., "Custom address fields (e.g., tax ID)"_ | No | Full gap | Build custom component for `shipping_address_details_form` slot |
 | _e.g., "Installment selection"_ | Yes (credit card) | None | Native installment fetch; extend via `payment_option_credit_card` slot if custom UI needed |
