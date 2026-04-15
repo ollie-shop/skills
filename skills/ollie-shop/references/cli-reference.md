@@ -9,6 +9,7 @@
 4. [Version Management](#version-management)
 5. [Development](#development)
 6. [Deployment](#deployment)
+7. [Business Rule Management](#business-rule-management)
 
 ---
 
@@ -126,3 +127,35 @@ ollie deploy status <deployment-id>
 ```
 
 <!-- TODO: Document deployment pipeline, rollback, environment targeting -->
+
+---
+
+## Business Rule Management
+
+Business rules are scoped to a **store** and can optionally reference specific versions via `versions_ids`.
+
+```bash
+# List all business rules for a store
+ollieshop business-rule list --store-id <uuid>
+
+# List business rules linked to a specific version
+ollieshop business-rule list --store-id <uuid> --version-id <uuid>
+
+# List only rules where code was updated
+ollieshop business-rule list --store-id <uuid> --code-updated true
+
+# Get a single business rule
+ollieshop business-rule get --id <uuid>
+
+# Update a business rule (flags)
+ollieshop business-rule update --id <uuid> --content "new rule content"
+
+# Update with linked versions, components, and functions
+ollieshop business-rule update --id <uuid> --content "rule" \
+  --versions-ids '["<uuid>"]' \
+  --components-ids '["<uuid>"]' \
+  --functions-ids '["<uuid>"]'
+
+# Update via JSON
+ollieshop business-rule update --data '{"id":"<uuid>","content":"new rule","versionsIds":["<uuid>"]}'
+```
