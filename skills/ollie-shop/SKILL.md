@@ -1,124 +1,76 @@
 ---
 name: ollie-shop
 description: >
-  Build, manage, and deploy custom checkout components for the Ollie Shop e-commerce platform.
-  Use this skill whenever the user is working with ollie-shop, ollie checkout, ollie CLI,
-  custom checkout components, checkout slots, checkout templates, or mentions deploying/managing
-  components on the Ollie Shop platform. Also trigger when the user asks about building checkout
-  UIs, integrating with e-commerce checkout flows (especially VTEX), or needs help understanding
-  how to implement business rules in a custom checkout component. If the user mentions figma designs,
-  screenshots, or business rules for a checkout flow, this skill helps translate those into
-  ollie-shop components.
+  Build, manage, and ship custom checkout components and hub functions on the Ollie Shop platform.
+  Use this skill whenever the user mentions ollie-shop, Ollie checkout, the `ollieshop` CLI,
+  checkout slots, checkout templates, business rules, or hub functions; or when they want help
+  writing a checkout component (with or without a Figma reference), wiring a function that
+  intercepts a checkout request/response, or deploying customizations to a store on top of
+  any supported commerce platform (VTEX, Shopify, VNDA, or custom).
 ---
 
-# Ollie Shop - Custom Checkout Components
+# Ollie Shop — Customizing Checkouts
 
-You are helping a developer build, manage, and deploy custom checkout components for the **Ollie Shop** platform -- an agnostic, extensible checkout system that connects with multiple e-commerce platforms (currently VTEX).
+You are helping a developer customize a checkout on **Ollie Shop**, a platform-agnostic checkout that plugs into commerce backends (currently VTEX, Shopify, VNDA, or a custom integration) and exposes three customization axes: **Components** (replace UI inside template slots), **Functions** (hub middleware on request/response, except PCI-protected paths), and **Admin** settings (colors, translations, toggles via UI).
 
-Ollie Shop allows developers to:
-- Select checkout **templates** (pre-built checkout layouts)
-- Upload custom **components** that plug into specific **slots** within those templates
-- Manage stores, components, and versions via a **CLI** and **SDK**
+## How this skill is organized
 
-Your job is to guide developers through the full lifecycle: from understanding what they need to build, to coding it with the SDK, to deploying it via the CLI.
+The skill has **five modes**. Pick one based on the user's intent (keywords listed). When the request straddles two modes, start with whichever produces the next concrete user-facing decision; you can hand off after.
 
----
+| Mode | Triggers | Load |
+|---|---|---|
+| **1. CLI Operations** | "deploy", "run locally", "ollieshop", "login", "business rule", "create a version", "trigger" | `references/cli-reference.md` |
+| **2. SDK & Coding** | "how do I use", "hook", "session", "useCheckoutAction", "styling", "anatomy" | `references/sdk-guide.md` + `references/component-anatomy.md` |
+| **3. Library lookup** | "is there a pattern for", "example of", "does Ollie already have" | `assets/components.csv` / `assets/functions.csv` + the matched entry's `INSTRUCTIONS.md` |
+| **4. Component design flow** | "create a component", "new component", "from Figma", "I want to customize" | `references/component-design-flow.md` first (cross-cutting), then the target entry's `INSTRUCTIONS.md` |
+| **5. Function authoring** | "hub function", "middleware", "external validation", "call an API", "intercept", "rewrite request" | `references/hub-functions.md` + the target function's `INSTRUCTIONS.md` |
 
-## How This Skill Is Organized
+## Question hierarchy — read this before asking the user anything
 
-This skill has four modes of operation. Identify which mode the developer needs based on their request:
+To avoid repeating yourself or contradicting questions across files, follow this order:
 
-### 1. CLI Operations
-When the developer needs to **manage resources** (login, deploy, CRUD for stores/components/versions).
-- Read `references/cli-reference.md` for the full command reference.
+1. **Cross-cutting first** (`component-design-flow.md`): if the request is about creating or changing a component or function, surface the design-flow questions before the entry-specific ones — Figma MCP availability, whether the integration is a native SDK capability or a custom client integration (HAR / docs / payload sample), and so on.
+2. **Entry-specific second** (the matched `INSTRUCTIONS.md`): each component/function entry owns its own narrow questions (3–5) about layout, validation, behavior. Those live inside `assets/components/<id>/INSTRUCTIONS.md` or `assets/functions/<id>/INSTRUCTIONS.md`.
+3. **Never repeat**: skip any question whose answer is already in the initial user prompt or in a previous answer from the design flow.
 
-### 2. SDK & Coding Guidance
-When the developer needs to **write component code** using the Ollie Shop SDK.
-- Read `references/sdk-guide.md` for SDK API, patterns, and best practices.
+If you can't tell which entry matches, finish the design flow first, then re-check the library — the design-flow answers usually narrow the match.
 
-### 3. Component Library
-When the developer needs **inspiration or reference implementations** for common checkout components.
-- Read `assets/component-library.csv` for the catalog of reusable patterns.
-- Each entry includes: component name, description, suggested slot, file path, tags, and complexity.
-- Use this to suggest existing patterns before building from scratch.
+## General principles
 
-### 4. Component Design Flow
-When the developer needs help **going from a design/requirement to an implementation plan**.
-- Read `references/component-design-flow.md` for the guided workflow.
-- This flow starts with a **Template Gap Analysis** (Step 0) that compares client requirements against what the native template already handles, producing a clear component backlog.
-- Template capabilities are documented per template in `references/templates/` (e.g., `references/templates/default.md`).
-- Then guides through: Gather Context, Identify Business Rules, Map to Slots, Design Contract, Check Library, Implement, Validate & Deploy.
+- **Be opinionated**. If the user does not specify a layout or integration approach, follow the Ollie default for that component or function (the `Default opinionated pattern` section of each `INSTRUCTIONS.md`). Only ask the user to override the default when the request demands it.
+- **Components are self-contained**. A component is a default-exported React function in `./components/<Name>/index.tsx` that uses `@ollie-shop/sdk` hooks for state and dispatch. Never call the underlying commerce platform directly — the SDK is the anti-corruption layer.
+- **Slots belong to a template**. The default template ships around 60 slots (see `references/slots-catalog.md`). Slot ids are stable strings; some are **dynamic** with a `{{ variable }}` segment — treat them as a pattern, not a fixed list (e.g. `payment_option_{{ paymentMethodName }}` matches `payment_option_pix`, `payment_option_promissory`, and any future method without a skill update).
+- **Functions are HTTP middleware**. A function intercepts a request or response on the hub. Request functions can rewrite `requestInit` (headers, cookies, auth) before forwarding, or respond directly without proxying. Response functions can mutate the payload or reject it. PCI-protected destinations are blocked at the hub.
+- **Customization tooling lives in the customer's repo under `.claude/ollie/`** (managed by Ollie, replaced on update). Anything outside that directory is the customer's own and is never touched by tooling sync.
 
----
+## Local dev loop (single source of truth)
 
-## General Principles
+`ollieshop start` is the day-to-day loop:
+1. Bundles every `./components/*/index.tsx` with esbuild watch.
+2. Serves them on `http://localhost:4000`.
+3. Opens Studio (`https://admin.ollie.shop/studio`) iframing the live checkout with your local bundles overriding the deployed ones.
+4. On save, esbuild rebuilds and Studio reloads via SSE.
 
-### Architecture
-- Components are **self-contained UI units** that render in specific template slots.
-- Each component receives context from the checkout SDK (cart data, user session, store config).
-- Components communicate with the checkout orchestrator via SDK hooks -- never directly with the e-commerce platform API.
-- The SDK provides an **anti-corruption layer** between your component and the underlying platform (VTEX, etc.).
+When you're happy with the result, **deploy from Studio's preview UI** (for components) or **upload the zip via the admin form** (for functions). The `ollieshop deploy` CLI command exists but is reserved for CI/scripted flows.
 
-### Coding Standards
-- Use **TypeScript** for all components.
-- Follow the SDK's component interface -- every component exports a default function matching the slot contract.
-- Keep components **stateless where possible**; use SDK-provided state management for checkout state.
-- Handle loading and error states explicitly -- checkout UX demands resilience.
-- Respect the template's design tokens for consistent styling.
+## Working with business rules
 
-### Slot System
-Templates define **named slots** where custom components can be placed. Each slot has:
-- A **name** (e.g., `cart_coupon`, `payment_method`, `order_summary_footer`)
-- A **contract** (the props/context the slot provides to the component)
-- **Constraints** (size limits, required behaviors, accessibility requirements)
+Business rules document the merchant's customization intent and can link to specific versions, components, and functions. List, get, and update them with `ollieshop business-rule …` — full commands in `references/cli-reference.md`. When implementing a customization, ask whether there is a business rule to link it to; if not, ask if the user wants you to create one.
 
-When helping a developer choose a slot, consider:
-1. What the component does functionally
-2. Where it makes sense in the checkout flow (cart, shipping, payment, confirmation)
-3. What data the component needs (available via the slot contract)
+## Figma and design integration
 
-### Deployment Flow
-1. Developer writes component code locally
-2. Tests with `ollie dev` (local development server)
-3. Creates a new version with `ollie component version create`
-4. Deploys with `ollie deploy`
-5. Activates in the target store
+If the user mentions Figma, suggest installing the Figma MCP — with MCP the agent reads the design structure directly, which is much more reliable than a screenshot. This is part of the cross-cutting design flow; do not ask "do you have a Figma?" inside an `INSTRUCTIONS.md` — that question lives in `component-design-flow.md`.
 
----
+## Quick reference
 
-## Working with Business Rules
-
-Checkout components often encode **business rules** specific to the merchant. When helping a developer implement business rules:
-
-1. **Identify the rule source** -- Is it from a Figma file, a screenshot, a documented spec, or observed behavior on a live website?
-2. **Decompose the rule** into conditions and actions (e.g., "if cart total > $100, show free shipping badge")
-3. **Map to SDK capabilities** -- Which SDK hooks and data sources support this rule?
-4. **Consider edge cases** -- Empty cart, logged-out user, unavailable product, currency formatting, mobile viewport
-5. **Validate against the slot contract** -- Can this slot's context provide the data the rule needs?
-
-For accessing documented business rules, read `references/business-rules-api.md` for the internal API reference.
-
----
-
-## Figma & Design Integration
-
-When the developer provides Figma files or screenshots as reference:
-
-1. Use the **Figma MCP** (if available) to read design files and extract component structure, spacing, colors, and layout.
-2. Map visual elements to **Ollie Shop slots** -- identify which parts of the design correspond to which template slots.
-3. Identify **design tokens** from the template that should be used instead of hard-coded values.
-4. Flag any design elements that **fall outside** what the slot contract supports -- these need discussion with the team.
-5. Generate a component skeleton that matches the design's structure.
-
----
-
-## Quick Reference
-
-| Task | Where to Look |
-|------|---------------|
-| CLI commands (login, deploy, CRUD) | `references/cli-reference.md` |
-| SDK API, hooks, component interface | `references/sdk-guide.md` |
-| Reusable component patterns | `assets/component-library.csv` |
-| Design-to-code workflow | `references/component-design-flow.md` |
-| Business rules API | `references/business-rules-api.md` |
-| Template native capabilities | `references/templates/default.md` |
+| Topic | Where |
+|---|---|
+| CLI commands (login, init, start, deploy, business-rule, schema) | `references/cli-reference.md` |
+| SDK hooks + component contract | `references/sdk-guide.md` |
+| Component folder layout + dev loop | `references/component-anatomy.md` |
+| Slot ids (template default) | `references/slots-catalog.md` |
+| Design-to-code workflow + cross-cutting questions | `references/component-design-flow.md` |
+| Hub function authoring (handler signature, triggers, PCI) | `references/hub-functions.md` |
+| Reusable component patterns (agnostic) | `assets/components.csv` |
+| Reusable function patterns | `assets/functions.csv` |
+| Default template capabilities | `references/templates/default.md` |
