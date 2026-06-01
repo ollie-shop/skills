@@ -1,0 +1,5 @@
+id,name,trigger_type,instructions_path,description
+cart-enrichment,Cart Enrichment,response,functions/cart-enrichment/INSTRUCTIONS.md,Mutates the checkout-session response to add fields to cart items from an external source (custom labels, compliance flags, content).
+payment-restriction,Payment Restriction,response,functions/payment-restriction/INSTRUCTIONS.md,Removes or filters payment methods on the checkout-session response based on cart contents, customer, or other business rules.
+reject-function,Reject Function,request,functions/reject-function/INSTRUCTIONS.md,Intercepts a request and returns a Response directly without proxying to the platform; pattern for short-circuiting calls when a precondition fails.
+external-validation,External Validation,request,functions/external-validation/INSTRUCTIONS.md,Calls an external API to validate the request (or response) and either passes it through, modifies requestInit with auth/headers, or rejects with a custom response.

@@ -56,7 +56,7 @@ const {
   updateSession,  // (session, raw) => void — manually replace the session
   sessionValidate,// (session, opts?) => { valid: true } | { valid: false, errors }
   sessionValidity,// last validation result
-  revalidate,     // () => void — re-fetch from the platform
+  revalidate,     // () => void — re-fetch from the platform (rarely the right call — see below)
   revalidateAsync,// () => Promise<...>
   isFallback,     // true if session came from a cached fallback after an API failure
   fallbackError,  // string when isFallback
@@ -67,6 +67,8 @@ const {
 The session is **generic** over extensions: `useCheckoutSession<MyExtensions>()` lets you read store-specific custom fields the platform attached. Default extensions type is an empty record.
 
 Read state through `session.*` for the typed shape; only drop down to `rawSession` if you genuinely need a platform-specific field that's not on `CheckoutSession`.
+
+**Do not call `revalidate()` after dispatching a checkout action.** `useCheckoutAction` already updates the session on success (except for `REQUEST`, `SIMULATE_SESSION`, and `CREATE_ORDER`, which return their own shape and don't mutate the session). Calling `revalidate()` triggers a redundant round-trip and can race with the action's own update. Reach for `revalidate()` only in the rare case where state could have drifted outside of any action you dispatched — e.g. after a background event you cannot observe — and even then, prefer dispatching a `REQUEST` action with `revalidate: true` so the refetch is sequenced with the rest of the action queue.
 
 ### `useCheckoutAction`
 
