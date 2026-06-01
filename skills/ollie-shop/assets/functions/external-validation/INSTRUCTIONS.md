@@ -33,7 +33,7 @@ export const handler: CustomFunction = async ({ req }) => {
   const verdict = await fetch("https://validator.example.com/check", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${process.env.VALIDATOR_TOKEN}`,
+      "Authorization": `Bearer ${validatorToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ customerId, url: url.pathname }),
@@ -57,7 +57,10 @@ export const handler: CustomFunction = async ({ req }) => {
   return new Request(req.url, {
     method: req.method,
     headers: { ...Object.fromEntries(req.headers), "x-validated": "1" },
-    body: req.method === "GET" || req.method === "HEAD" ? null : await req.text(),
+    body:
+      req.method === "GET" || req.method === "HEAD"
+        ? null
+        : JSON.stringify(await req.json()),
   });
 };
 ```
@@ -86,10 +89,13 @@ return new Request(req.url, {
   method: req.method,
   headers: {
     ...Object.fromEntries(req.headers),
-    "x-store-key": process.env.STORE_KEY!,
+    "x-store-key": storeKey,
     "cookie": [req.headers.get("cookie"), `myToken=${token}`].filter(Boolean).join("; "),
   },
-  body: req.method === "GET" || req.method === "HEAD" ? null : await req.text(),
+  body:
+    req.method === "GET" || req.method === "HEAD"
+      ? null
+      : JSON.stringify(await req.json()),
 });
 ```
 
@@ -131,7 +137,7 @@ Treat the validator's possible outcomes as a decision tree rather than a fixed p
 
 ## Antipatterns
 
-- **Don't put credentials in the function source.** Use `process.env.*`. Ship the secret separately to the Lambda config.
+- **Don't hardcode credentials in the function source.** Reference them via a variable that gets loaded from the function's runtime configuration. (The mechanism for injecting these values into the running function is still in flux and will be documented separately.)
 - **Don't call the external API on every request unconditionally.** Filter via the `expression` so the function only runs on the endpoints it's meant to validate.
-- **Don't return a modified `Request` with a stale body.** If you `await req.text()` to read it, you must pass the text back; the original stream is consumed.
+- **Don't return a modified `Request` with a stale body.** If you `await req.json()` to read it, you must pass the value back (e.g. `JSON.stringify(await req.json())`); the original stream is consumed on first read.
 - **Don't assume the external API speaks the same currency / locale as the store.** Validate the units explicitly.
