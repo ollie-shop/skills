@@ -103,9 +103,71 @@ execute([{ id: "sku-1", quantity: 2 }]); // input is typed per action
 | `SIMULATE_SESSION` | `SimulateCheckoutSessionInput` | Preview what the session would look like with hypothetical inputs (does not commit). |
 | `CREATE_NEW_SESSION` | `unknown` | Reset to a fresh session. |
 | `CREATE_ORDER` | `CreateOrderInput` | Finalize and create the order. |
-| `REQUEST` | `{ url, method?, headers?, body?, revalidate? }` | Escape hatch for arbitrary HTTP through the checkout backend (e.g. calling a custom endpoint your function exposes). Pass `revalidate: true` to re-pull the session after. |
+| `REQUEST` | `{ url, method?, headers?, body?, revalidate? }` | Escape hatch for arbitrary HTTP through the checkout backend. See the dedicated `REQUEST` subsection below for URL host, body, response envelope, and `revalidate` rules. |
 
 `isPending` and the `usePendingActions` hook below both let you reflect the action's loading state.
+
+#### `REQUEST` — calling external endpoints
+
+`REQUEST` is the escape hatch for any HTTP call that isn't covered by a typed checkout action — a store-specific endpoint, a third-party validator, persisting custom data alongside the orderForm, etc. The hub forwards the call server-side, so it carries the checkout session and platform auth without the bundle ever touching them directly.
+
+```ts
+const { platformStoreId } = useStoreInfo();
+const { executeAsync, isPending } = useCheckoutAction("REQUEST");
+
+await executeAsync({
+  url: `https://${platformStoreId}.vtexcommercestable.com.br/api/checkout/pub/orderForm/${id}/customData/recipe`,
+  method: "PUT",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ item: JSON.stringify(recipes) }),
+  revalidate: true,
+});
+```
+
+Five details trip people up:
+
+1. **URL must be absolute.** A relative path (e.g. `/api/checkout/...`) does not resolve against the store — the hub is a separate origin and has no implicit host. Always build the full `https://...`.
+
+2. **VTEX-native routes go to `vtexcommercestable.com.br`, not `myvtex.com`.** Anything that starts with `/api/` (checkout-pub, master-data, orders, catalog) targets `https://{platformStoreId}.vtexcommercestable.com.br`. That host is the fastest path and the same one the rest of the checkout uses — hub functions matched to the same URL will fire. Routes that start with `/_v/` (VTEX IO custom services) live on the store's CNAME or `*.myvtex.com` instead. Read `platformStoreId` from `useStoreInfo()`:
+
+   ```ts
+   const { platformStoreId } = useStoreInfo();
+   const VTEX_API = `https://${platformStoreId}.vtexcommercestable.com.br`;
+   await executeAsync({ url: `${VTEX_API}/api/checkout/pub/orderForm/${id}/items`, ... });
+   ```
+
+3. **`body` is JSON-only.** The hub serializes whatever you pass and sets `Content-Type` from the `headers` argument. For multipart payloads (binary file uploads, etc.) `REQUEST` cannot help — use `fetch` directly with `credentials: "include"` when the bundle runs on the same origin as the store:
+
+   ```ts
+   const fd = new FormData();
+   fd.append("file", file, file.name);
+   const res = await fetch(`${VTEX_API}/_v/services/uploadImage`, {
+     method: "POST",
+     body: fd,
+     credentials: "include",
+   });
+   const { data: imageUrl } = await res.json();
+   ```
+
+4. **Response envelope is axios-like.** The upstream body comes back inside `{ data, status, headers }`. In some hub paths it is nested one level deeper (`res.data.data`). A defensive extractor keeps consumers tidy:
+
+   ```ts
+   function extractResponseBody<T>(res: unknown): T | undefined {
+     if (!res || typeof res !== "object") return undefined;
+     const obj = res as Record<string, unknown>;
+     if (obj.data && typeof obj.data === "object") {
+       const inner = (obj.data as Record<string, unknown>).data;
+       if (inner !== undefined) return inner as T;
+       return obj.data as T;
+     }
+     return res as T;
+   }
+
+   const res = await executeAsync({ url, method: "GET" });
+   const body = extractResponseBody<MyShape>(res);
+   ```
+
+5. **`revalidate: true` only on the LAST request of a multi-step flow.** Each `revalidate` re-pulls the session from the platform; chaining them means every step blocks on a round-trip and intermediate state can race with the next request. Set `revalidate: false` (the default) on intermediate steps, and `revalidate: true` only on the final mutation that the UI needs to reflect.
 
 ### `usePendingActions`
 
@@ -129,6 +191,47 @@ addMessage({ type: "error", error: result.error.serverError });
 ```
 
 `messages` is the current list (each `{ id, type, content, title? }`). The host renders them; you just push/pop.
+
+#### Pairing `useMessages` with `useCheckoutAction`
+
+Any async action that hits the network should pair a loading state with a `useMessages` push on both success and failure. This is the default pattern; it should not be optional.
+
+```ts
+const { platformStoreId } = useStoreInfo();
+const { addMessage } = useMessages();
+const { executeAsync, isPending } = useCheckoutAction("REQUEST");
+
+async function applyCoupon(code: string) {
+  try {
+    await executeAsync({
+      url: `https://${platformStoreId}.vtexcommercestable.com.br/api/checkout/pub/orderForm/${id}/coupon`,
+      method: "POST",
+      body: JSON.stringify({ text: code }),
+      revalidate: true,
+    });
+    addMessage({ type: "success", content: "Coupon applied." });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "";
+    addMessage({
+      type: "error",
+      content: detail ? `Could not apply coupon. ${detail}` : "Could not apply coupon.",
+    });
+  }
+}
+
+// In the JSX:
+<button onClick={() => applyCoupon(value)} disabled={isPending}>
+  {isPending ? <Spinner /> : "Apply"}
+</button>
+```
+
+Three things make this the default:
+
+- `isPending` from `useCheckoutAction` (or a manual `useState` for non-action flows like a direct `fetch`) drives the button's disabled state and a spinner / skeleton. The user sees that something is happening.
+- On success, `addMessage` confirms the action so the user is not left wondering if it worked.
+- On error, `addMessage` surfaces the failure instead of leaving the UI silently broken. Logging to `console` does not count — the customer cannot see the console.
+
+Without this pattern, the UI either looks frozen (no loading) or lies (silent failure). Both are real bugs reported in production pilots.
 
 ### `useStoreInfo`
 

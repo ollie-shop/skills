@@ -29,6 +29,50 @@ The goal is to produce one short batch of clarifying questions and then commit t
 
 ---
 
+## Step 0: Context inventory
+
+Before anything else — design references, library lookups, slot resolution — take stock of what the user actually gave you. The single most common failure mode is generating code with inferences when the user could have answered in one message. If critical context is missing, **stop and ask once, in batch**, before writing anything.
+
+### What to check
+
+Run through this checklist mentally on the first message of the conversation:
+
+| Artifact | Why it matters | What "missing" looks like |
+|---|---|---|
+| **Design reference** | Pixel/spacing/color decisions | No Figma link, no screenshot, no "use the default neutral style" instruction. |
+| **HAR file** (Case B integrations) | Real headers, payloads, status codes, sequencing | Only "we call our backend" without a recording. |
+| **API docs or payload sample** (Case B) | Field names, shape, success/error variants | "Just call the endpoint" without showing the request/response. |
+| **Auth scheme** (Case B) | Bearer? Signed header? Cookie? mTLS? | Not mentioned, or "use my token" without showing where the token lives. |
+| **Business rule source** | Resolves ambiguity when a single signal can mean two things | E.g. "show the lab-discount when eligible" — but the eligibility flag could live in the catalog property, the orderForm, or a custom API. |
+| **Failure / fallback policy** | Decides fail-open vs fail-closed for any external call | Not addressed when the request can time out. |
+
+### The pause-and-ask rule
+
+If anything **critical for the work** is missing, do not start coding. Ask in **one** batch, plain and specific:
+
+> "Before I start, I need to confirm a few things:
+> 1. Do you have a Figma file or a screenshot for this component?
+> 2. The flow that adds the prescription — do you have a HAR of it on the existing site?
+> 3. What's the source of truth for whether a product needs a prescription — a catalog property, a field on the orderForm, or an external API?"
+
+After the user answers, commit and execute. **Do not loop**. If you find a new ambiguity mid-implementation, that is its own one-off question — but the upfront batch should cover 80%+ of cases.
+
+### The no-deduction rule
+
+If the user gave you an artifact (HAR, payload sample, source file) and you find yourself uncertain about a specific field, **re-consult the artifact** before guessing. The pattern that costs the most iterations is: agent skim-reads, picks the first interpretation that fits, hard-codes it. Examples observed in practice:
+
+- Reading `openTextField.value` from a sample rawSession when the same store actually uses `customData.customApps` — both shapes exist in VTEX, only one is populated per store.
+- Assuming `modalType === "CHEMICALS"` means "PBM-eligible" when the real signal is the `ProgramaPBM` catalog property.
+- Replicating an HTTP call client-side because the final state in rawSession implies it was made — when in reality a server-side hub function applied it.
+
+If the artifact does not answer the question definitively, **that is also a question** — ask the user before assuming.
+
+### When the user clearly gave you everything
+
+If the inventory passes (Figma is attached, the HAR is there, the business rule has a canonical source), skip the pause-and-ask and move on to Step 1. The proactive ask is for the case where the user said "build me X" with no supporting material — not for every conversation.
+
+---
+
 ## Step 1: Identify the design reference
 
 How visual fidelity will be achieved. Pick whichever the user has and adapt — do not block the work on a missing reference.
@@ -169,3 +213,5 @@ If there's no matching entry, fall back to:
 - **Confusing Case A with Case B.** "Show free shipping when cart > $X" sounds custom but is Case A (`useCheckoutSession` + a threshold prop). Re-check signals before asking for a HAR.
 - **Asking for design specifics on a component the user wants to ship with a neutral default.** If they say "I just want it to work, I'll style it later", go straight to the "Without a design reference" path in the entry's `INSTRUCTIONS.md`.
 - **Forgetting Step 3.** Building a custom component for behavior the default template already does is the most common waste of effort.
+- **Replicating an HTTP call that does not appear in the HAR.** If the final rawSession shows a state transition (price change, attachment added, customData populated) and no client-side call in the HAR explains it, the change was made by a server-side hub function. Document the inference but do **not** add the call to the component "just to be safe" — it will be redundant when the hook works and harmful when the orderForm config rejects it (403). Trust `revalidate: true` on the last blocking request to pick up the side effects.
+- **Confusing fields with similar names without re-reading the sample.** A single store usually uses **one** of `customData.customApps` vs `openTextField.value` (not both); the eligibility signal for PBM is `ProgramaPBM` (catalog property), not `modalType` (orderForm field). When two field names sound plausible for the same data, **re-read the sample** before picking — the cost of one extra glance is much less than the cost of an iteration of correction.

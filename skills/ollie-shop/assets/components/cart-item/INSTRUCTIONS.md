@@ -4,15 +4,19 @@
 
 A single row in the cart's item list. Renders one product with image, name, SKU info, quantity controls, price, and remove action. The template iterates the cart and renders this slot once per item.
 
+## Props the slot injects (this is the entire contract)
+
+> **The slot passes exactly these three props. Nothing else.** Everything else you need — price extras, prescription/subscription state, addons, platform-specific fields, pending-action flags, promotional labels, lab-discount eligibility — **must be derived inside the component** from `rawSession`, `useCheckoutSession()`, `usePendingActions()`, or other hooks. Adding props like `prescription`, `subscription`, `labDiscount`, `unitPriceCents`, or `pendingQuantity` to the component signature is the single most common mistake; the slot does not pass them and they arrive `undefined` in production.
+
+| Prop | Type | Notes |
+|---|---|---|
+| `item` | `CartItem` | The parsed cart item: `id`, `name`, `quantity`, `price`, `originalPrice`, `available`, `index`, `image`, `url`. |
+| `onQuantityChange?` | `(quantity: number) => void` | Emit when the user changes quantity. The parent dispatches the SDK action. |
+| `onRemoveItem?` | `(index: number) => void` | Emit when the user clicks remove. The parent dispatches the SDK action. |
+
 ## Slot(s)
 
-- **Primary:** `cart_item` — the canonical per-item slot. The template passes the item and lifecycle handlers as props.
-
-## Props the slot provides
-
-- `item` — the parsed cart item (id, name, quantity, price, originalPrice, available, index, image, url).
-- `onQuantityChange?(quantity)` — emit when the user changes quantity. The parent dispatches the SDK action.
-- `onRemoveItem?(index)` — emit when the user clicks remove. The parent dispatches the SDK action.
+- **Primary:** `cart_item` — the canonical per-item slot. The template iterates the cart and renders this slot once per item.
 
 ## Behavior
 
