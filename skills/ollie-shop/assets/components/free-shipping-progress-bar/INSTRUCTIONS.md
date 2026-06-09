@@ -40,7 +40,7 @@ A persistent indicator that shows how far the customer is from unlocking free sh
 - Use CSS variables: `--color-primary` for the filled portion and the unlock copy, `--surface-subtle` for the empty track.
 - Render the progress bar with a CSS transition on `width` so the fill animates smoothly when the cart changes.
 - Layout: vertical flex, gap between rows. Center the copy + icon on the cross axis.
-- Currency formatting via `Intl.NumberFormat(session.locale, { style: "currency", currency: session.locale.currencyCode })` — never a hardcoded locale.
+- Currency formatting via `Intl.NumberFormat(session.locale.language, { style: "currency", currency: session.locale.currency })` — never a hardcoded locale.
 
 ## Antipatterns
 

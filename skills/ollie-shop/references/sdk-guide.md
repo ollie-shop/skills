@@ -13,17 +13,22 @@ A custom component is a React function exported as `default` from `./components/
 import { useCheckoutSession } from "@ollie-shop/sdk";
 import styles from "./styles.module.css";
 
-export default function FreeShippingBar({ threshold = 199 }: { threshold?: number }) {
+export default function FreeShippingBar({ thresholdCents = 19900 }: { thresholdCents?: number }) {
   const { session } = useCheckoutSession();
-  const remaining = Math.max(0, threshold - (session.totals?.subtotal ?? 0));
+  // session.totals.items is the items subtotal in minor units (cents).
+  const remainingCents = Math.max(0, thresholdCents - session.totals.items);
 
-  if (remaining === 0) {
+  if (remainingCents === 0) {
     return <div className={styles.unlocked}>You unlocked free shipping!</div>;
   }
+
+  const formatted = new Intl.NumberFormat(session.locale.language, {
+    style: "currency",
+    currency: session.locale.currency,
+  }).format(remainingCents / 100);
+
   return (
-    <div className={styles.bar}>
-      Add R$ {remaining.toFixed(2)} more for free shipping.
-    </div>
+    <div className={styles.bar}>Add {formatted} more for free shipping.</div>
   );
 }
 ```
@@ -69,6 +74,56 @@ The session is **generic** over extensions: `useCheckoutSession<MyExtensions>()`
 Read state through `session.*` for the typed shape; only drop down to `rawSession` if you genuinely need a platform-specific field that's not on `CheckoutSession`.
 
 **Do not call `revalidate()` after dispatching a checkout action.** `useCheckoutAction` already updates the session on success (except for `REQUEST`, `SIMULATE_SESSION`, and `CREATE_ORDER`, which return their own shape and don't mutate the session). Calling `revalidate()` triggers a redundant round-trip and can race with the action's own update. Reach for `revalidate()` only in the rare case where state could have drifted outside of any action you dispatched — e.g. after a background event you cannot observe — and even then, prefer dispatching a `REQUEST` action with `revalidate: true` so the refetch is sequenced with the rest of the action queue.
+
+#### Authoritative shape of `session`
+
+The schema below is what the SDK actually returns. Use these field names exactly; the d.ts in `@ollie-shop/sdk` is the source of truth if you need a field not listed here.
+
+**`session.totals` — all amounts in minor units (cents).**
+
+| Field | Type | Notes |
+|---|---|---|
+| `items` | `number` | Items subtotal (no shipping, no discounts). This is the field most "free shipping threshold" / "minimum order" rules want. |
+| `total` | `number` | Grand total (items + shipping + tax + interest − discounts). |
+| `shipping` | `number?` | Total shipping cost. |
+| `tax` | `number?` | Total tax amount. |
+| `discounts` | `number?` | Total discounts (positive number representing what was subtracted). |
+| `giftCard` | `number?` | Amount paid with gift cards. |
+| `interest` | `number?` | Interest from multi-installments. |
+| `change` | `number?` | Change amount. |
+
+**`session.locale`.**
+
+| Field | Type | Example |
+|---|---|---|
+| `currency` | `string` | ISO 4217 — `"BRL"`, `"USD"`. |
+| `language` | `string` | `"pt-BR"`, `"en"`, `"es"`. |
+| `country` | `string` | ISO 3166-1 alpha-3 — `"BRA"`, `"USA"`. |
+
+**`session.cartItems[]` — each amount in minor units (cents).**
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `string` | SKU code or platform item id. |
+| `uniqueId` | `string` | Unique line id (platform-specific). |
+| `index` | `number` | Position in the cart. |
+| `name` | `string` | Display name. |
+| `price` | `number` | Current sale price in cents. |
+| `originalPrice` | `number` | Pre-sale price in cents. Use this as the base for promotional preview math; `price` already reflects applied discounts. |
+| `quantity` | `number` | |
+| `available` | `boolean` | |
+| `image` | `string` | URL. |
+| `url` | `string?` | PDP link. |
+| `sellerId`, `variant`, `brand`, `category`, `variantDetails` | optional | Display extras when present. |
+
+#### Typed extras (`session.extensions`) vs raw platform extras (`rawSession`)
+
+Two different channels carry "extra" data on top of the parsed session — they look similar but are not the same:
+
+- **`session.extensions`** is the **typed** channel. Reach for it via `useCheckoutSession<MyExtensions>()` and define `MyExtensions` as a `Record<string, unknown>` of fields you control. Use it when your own code (hub function, store config) attaches data to the session in a known shape.
+- **`rawSession`** is the **unparsed** payload from the underlying commerce platform (VTEX orderForm, Shopify cart, etc.). It carries every platform-specific field — including fields a paired hub function may write under custom paths. Its shape varies per platform; treat any access as platform-coupled.
+
+Default rule: prefer `session.*` (parsed, platform-agnostic) for everything that's there. Drop to `session.extensions` for your own typed extras. Drop to `rawSession` only for platform-specific data the parsed session doesn't expose. Don't reach into `rawSession` for fields that already live on `session`.
 
 ### `useCheckoutAction`
 
@@ -124,7 +179,7 @@ await executeAsync({
 });
 ```
 
-Five details trip people up:
+Six details trip people up:
 
 1. **URL must be absolute.** A relative path (e.g. `/api/checkout/...`) does not resolve against the store — the hub is a separate origin and has no implicit host. Always build the full `https://...`.
 
@@ -136,7 +191,7 @@ Five details trip people up:
    await executeAsync({ url: `${VTEX_API}/api/checkout/pub/orderForm/${id}/items`, ... });
    ```
 
-3. **`body` is JSON-only.** The hub serializes whatever you pass and sets `Content-Type` from the `headers` argument. For multipart payloads (binary file uploads, etc.) `REQUEST` cannot help — use `fetch` directly with `credentials: "include"` when the bundle runs on the same origin as the store:
+3. **`body` must be a string** — typically `JSON.stringify(...)`. The hub does **not** serialize objects automatically. Passing `body: { foo: "bar" }` as a plain object results in an empty request payload (the field arrives `undefined` on the upstream); setting `Content-Type: application/json` in `headers` does not change that. Always stringify before passing. For multipart payloads (binary file uploads, etc.) `REQUEST` cannot help — use `fetch` directly with `credentials: "include"` when the bundle runs on the same origin as the store:
 
    ```ts
    const fd = new FormData();
@@ -168,6 +223,44 @@ Five details trip people up:
    ```
 
 5. **`revalidate: true` only on the LAST request of a multi-step flow.** Each `revalidate` re-pulls the session from the platform; chaining them means every step blocks on a round-trip and intermediate state can race with the next request. Set `revalidate: false` (the default) on intermediate steps, and `revalidate: true` only on the final mutation that the UI needs to reflect.
+
+6. **Chained `REQUEST`s use a single hook with sequential `await`s.** When the flow needs more than one HTTP call in order (discover → authorize → apply), instantiate **one** `useCheckoutAction("REQUEST")` at the top of the component and call `await executeAsync(...)` in sequence inside the same async handler. Do not create a separate `useCheckoutAction("REQUEST")` per call and stitch them together via `onSuccess` callbacks — the second call may never fire (callbacks aren't a substitute for await), and you lose the ability to read the previous response inline.
+
+   ```ts
+   const { platformStoreId } = useStoreInfo();
+   const { addMessage } = useMessages();
+   const { executeAsync, isPending } = useCheckoutAction("REQUEST");
+
+   async function applyDiscount(cpf: string, ean: string) {
+     try {
+       // Step 1 — discover. No revalidate yet (intermediate).
+       const authRes = await executeAsync({
+         url: "https://www.mystore.com.br/_v/app/authorize",
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify({ cpf, ean }),
+       });
+       const auth = extractResponseBody<{ approved: boolean }>(authRes);
+       if (!auth?.approved) {
+         addMessage({ type: "error", content: "Not authorized." });
+         return;
+       }
+
+       // Step 2 — apply. revalidate only on the last blocking step.
+       await executeAsync({
+         url: "https://www.mystore.com.br/_v/app/apply",
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify([{ ean, document: cpf }]),
+         revalidate: true,
+       });
+
+       addMessage({ type: "success", content: "Discount applied." });
+     } catch (err) {
+       addMessage({ type: "error", content: "Could not apply discount." });
+     }
+   }
+   ```
 
 ### `usePendingActions`
 

@@ -13,7 +13,7 @@ Minimum file layout for a custom checkout component on Ollie Shop. This is the s
 
 - The **folder name** is the canonical name. `ollieshop start` and `ollieshop deploy --name <Name>` both look up the component by this folder name.
 - `index.tsx` **must default-export** a React function. Component props are whatever you declare in the function signature; the slot supplies them (defaults come from the component record's `props` JSON in the database).
-- `meta.json` carries `id` (the component UUID returned by `ollieshop component create`) and optional `slot` for unlinked previews. The `id` field is what tells the host that this local folder corresponds to a real component in the database. Without it, `ollieshop start` builds the folder anyway but flags it as **unlinked** (visible in Studio, not placed into a slot in the live checkout).
+- `meta.json` carries `id` (the component UUID returned by `ollieshop component create`) and optional `slot` for unlinked previews. The `id` field is what tells the host that this local folder corresponds to a real component in the database. Without it, `ollieshop start` builds the folder anyway but flags it as **unlinked** (visible in Studio, not placed into a slot in the live checkout). Setting `"slot": "<slot-id>"` with `"id": null` lets Studio render the component into that slot for preview purposes — useful for prototyping before running `ollieshop component create`.
 
 ## Minimal example
 
@@ -22,18 +22,22 @@ Minimum file layout for a custom checkout component on Ollie Shop. This is the s
 import { useCheckoutSession } from "@ollie-shop/sdk";
 import styles from "./styles.module.css";
 
-export default function FreeShippingBar({ threshold = 199 }: { threshold?: number }) {
+export default function FreeShippingBar({ thresholdCents = 19900 }: { thresholdCents?: number }) {
   const { session } = useCheckoutSession();
-  const subtotal = session.totals?.subtotal ?? 0;
-  const remaining = Math.max(0, threshold - subtotal);
+  // session.totals.items is the items subtotal in minor units (cents).
+  const remainingCents = Math.max(0, thresholdCents - session.totals.items);
 
-  if (remaining === 0) {
+  if (remainingCents === 0) {
     return <div className={styles.unlocked}>Free shipping unlocked!</div>;
   }
+
+  const formatted = new Intl.NumberFormat(session.locale.language, {
+    style: "currency",
+    currency: session.locale.currency,
+  }).format(remainingCents / 100);
+
   return (
-    <div className={styles.bar}>
-      Add R$ {remaining.toFixed(2)} to unlock free shipping.
-    </div>
+    <div className={styles.bar}>Add {formatted} to unlock free shipping.</div>
   );
 }
 ```
@@ -96,3 +100,43 @@ Default to a single `index.tsx`. Split when:
 - You're reusing helpers across components in the same project — extract a `./components/<Name>/utils.ts` or share via a sibling folder.
 
 Avoid sub-routing, server components, or build-time data fetching. The bundle runs as a client-side React component inside the checkout.
+
+## Shared assets — icons & utils
+
+When something is used by more than one component (icons, formatters, helper hooks, types), put it in a shared directory at the project root and import from there. Don't inline these things into each component's `index.tsx`.
+
+```
+./
+├── icons/
+│   ├── TrashIcon.tsx
+│   ├── UploadIcon.tsx
+│   └── CheckIcon.tsx
+├── utils/
+│   ├── formatPhone.ts
+│   └── parseCpf.ts
+└── components/
+    ├── ProductCard/
+    │   └── index.tsx              # imports `../../icons/TrashIcon`
+    └── ShippingPicker/
+        └── index.tsx              # also imports `../../icons/TrashIcon`
+```
+
+Each icon is a tiny React component exporting an inline `<svg>`:
+
+```tsx
+// ./icons/TrashIcon.tsx
+export function TrashIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M2.5 4h11M6.7 4V2.7h2.6V4M3.8 4l.5 9.3a1 1 0 0 0 1 .9h5.4a1 1 0 0 0 1-.9l.5-9.3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+```
+
+Two rules to keep:
+
+- **No inline `<svg>` inside `index.tsx`.** Repeated icons get duplicated across components, the JSX of each component becomes harder to scan, and renaming the icon means editing N files. Importing from `./icons/` keeps each component focused on its own job.
+- **No Unicode emoji glyphs as icons.** Characters like `🗑`, `✕`, `📷` render differently per OS, browser, and font fallback — the customer sees a different shape than the designer drew, and the rendering may even change between Chrome and Firefox on the same machine. Always use an inline SVG (from the shared `./icons/` folder).
+
+Same pattern applies to formatters, hooks, types, and any other code that two or more components touch — put it in `./utils/`, `./hooks/`, or `./types/` at the project root and import it. Anything used by only one component stays inside that component's folder.

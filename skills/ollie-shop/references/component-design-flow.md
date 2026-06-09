@@ -86,6 +86,8 @@ Brief setup hint to give the user:
 - Install the official Figma Dev Mode MCP server. The Figma desktop app must be running with the file open. Add the MCP to the agent's tool config.
 - Once installed, the agent can call Figma MCP tools to inspect frames by URL or selection.
 
+**Once MCP is installed, prefer `get_design_context` over `get_screenshot` for layout work.** `get_design_context` returns the structured tree — frames, auto-layout rules, components, design tokens — which is what you actually need to build markup. `get_screenshot` (or downloading PNGs) only gives a flat image and forces you to eyeball colors and spacing. Use the screenshot tool only for a visual diff or to confirm a hover/focus/empty state that's not in the inspected frame.
+
 If the user doesn't want to install the MCP, fall back to screenshots — but flag that the agent will be guessing at hover/focus/responsive variants.
 
 ### Screenshots
