@@ -20,7 +20,7 @@ The skill has **seven modes**. Pick one based on the user's intent (keywords lis
 | Mode | Triggers | Load |
 |---|---|---|
 | **1. CLI Operations** | "deploy", "run locally", "ollieshop", "login", "business rule", "create a version", "trigger" | `references/cli-reference.md` |
-| **2. SDK & Coding** | "how do I use", "hook", "session", "useCheckoutAction", "anatomy", "mocks", "loading state", "coding standards", "REQUEST guard" | `references/sdk-guide.md` + `references/component-anatomy.md` + `references/coding-standards.md` |
+| **2. SDK & Coding** | "how do I use", "hook", "session", "useCheckoutAction", "anatomy", "loading state", "coding standards", "REQUEST guard" | `references/sdk-guide.md` + `references/component-anatomy.md` + `references/coding-standards.md` |
 | **3. Slot System** | "which slot", "slot id", "slot lifecycle", "slot visibility", "slot props", "checkout-slots" | `references/slots-reference.md` + `assets/checkout-slots-data.yaml` + `references/slots-catalog.md` |
 | **4. Design Contract** | "design token", "css module", "token name", "a11y", "accessibility", "styling rules" | `references/design-contract.md` |
 | **5. Library lookup** | "is there a pattern for", "example of", "does Ollie already have", "UI primitive" | `assets/components.csv` / `assets/functions.csv` + the matched entry's `INSTRUCTIONS.md`; for UI primitives: `assets/UI/README.md` |
@@ -43,7 +43,7 @@ If you can't tell which entry matches, finish the design flow first, then re-che
 - **Components are self-contained**. A component is a default-exported React function in `./components/<Name>/index.tsx` that uses `@ollie-shop/sdk` hooks for state and dispatch. Never call the underlying commerce platform directly — the SDK is the anti-corruption layer.
 - **Slots belong to a template**. The default template ships around 60 slots (see `references/slots-catalog.md`). Slot ids are stable strings; some are **dynamic** with a `{{ variable }}` segment — treat them as a pattern, not a fixed list (e.g. `payment_option_{{ paymentMethodName }}` matches `payment_option_pix`, `payment_option_promissory`, and any future method without a skill update).
 - **Functions are HTTP middleware**. A function intercepts a request or response on the hub. Request functions can rewrite `requestInit` (headers, cookies, auth) before forwarding, or respond directly without proxying. Response functions can mutate the payload or reject it. PCI-protected destinations are blocked at the hub.
-- **Coding standards** (mocks, `commons/` layout, definition-of-done, REQUEST guards, loading states, observability) live in `references/coding-standards.md` — load it alongside `sdk-guide.md` when writing component code.
+- **Coding standards** (`commons/` layout, definition-of-done, REQUEST guards, loading states, observability) live in `references/coding-standards.md` — load it alongside `sdk-guide.md` when writing component code.
 - **Customization tooling lives in the customer's repo under `.claude/ollie/`** (managed by Ollie, replaced on update). Anything outside that directory is the customer's own and is never touched by tooling sync.
 
 ## Local dev loop (single source of truth)

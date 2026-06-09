@@ -130,9 +130,6 @@ components/
     ├── hooks/                       # Data/logic hooks (optional)
     │   └── useMyComponent.ts
     ├── utils/                       # Pure helpers (optional)
-    ├── mocks/                       # Preview fixtures + single MOCK_ENABLED toggle
-    │   ├── index.ts                 #   export const MOCK_ENABLED = true; ...
-    │   └── fixture.json
     ├── types.ts                     # Shared interfaces (optional)
     ├── index.module.css             # Component styles
     └── meta.json                    # Component metadata + slot assignment
@@ -595,12 +592,6 @@ addMessage({ type: "error", content: "Payment failed. Please try again." });
 
 ---
 
-## Testing Components
-
-<!-- TODO: Document testing setup -->
-<!-- Topics: test utilities provided by SDK, mocking slot context -->
-
----
 
 ## Known-absent APIs
 

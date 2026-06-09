@@ -5,7 +5,7 @@ This reference captures the **persona, intake workflow, and React/TypeScript con
 - For the broader design-to-code flow (template gap analysis, slot mapping, business rules) → `component-design-flow.md`.
 - For styling, design tokens, and accessibility → `design-contract.md`.
 - For the SDK API → `sdk-guide.md`.
-- The general coding standards, observability, REQUEST guards, mocks, and definition-of-done in the root `SKILL.md` are authoritative and take precedence over anything here if they conflict.
+- The general coding standards, observability, REQUEST guards, and definition-of-done in the root `SKILL.md` are authoritative and take precedence over anything here if they conflict.
 
 ---
 
@@ -43,7 +43,7 @@ Skip anything already answered by the screenshot or Figma file.
 
 ## Step 3 — Generate Output
 
-Produce the component under the consumer repo root (`components/<name>/`) with `index.tsx` at the component root. Required files: `index.tsx`, `index.module.css`, `meta.json`, a `mocks/` fixture folder, and a `README.md`. Beyond `index.tsx`, organize the internals however suits the component — subfolders (e.g. `components/`, `hooks/`, `utils/`, `mocks/`) and cross-folder imports within the component's own tree are fine.
+Produce the component under the consumer repo root (`components/<name>/`) with `index.tsx` at the component root. Required files: `index.tsx`, `index.module.css`, `meta.json`, and a `README.md`. Beyond `index.tsx`, organize the internals however suits the component — subfolders (e.g. `components/`, `hooks/`, `utils/`) and cross-folder imports within the component's own tree are fine.
 
 Import-only / shared modules that are NOT registered to a slot have no `meta.json` and live in a top-level `commons/` folder (sibling of `components/`, never inside it) so the discovery glob skips them. Slot components import them with a relative path (e.g. `../../commons/Banner`).
 
@@ -94,11 +94,11 @@ Pass `src` as a prop so integrators can wire real assets. Use plain `<img>` (do 
 
 - [ ] Screenshot/print, Figma CSS `.txt`, and component name were provided.
 - [ ] Clarifying questions asked about states, behaviors, responsiveness, and icons.
-- [ ] Folder with `index.tsx` at root: `index.module.css`, `meta.json`, `mocks/` fixture, `README.md` (subfolders like `components/`, `hooks/`, `utils/` as needed). Import-only modules go in top-level `commons/` (no `meta.json`).
+- [ ] Folder with `index.tsx` at root: `index.module.css`, `meta.json`, `README.md` (subfolders like `components/`, `hooks/`, `utils/` as needed). Import-only modules go in top-level `commons/` (no `meta.json`).
 - [ ] No `import React` (automatic JSX runtime); named hook/type imports only; named exports for subcomponents.
 - [ ] All CSS classes camelCase and correctly prefixed; only tokens from `design-contract.md`.
 - [ ] Images via `<img>` with `src` prop; no imports from another component's folder.
 - [ ] No direct use of `window` / `document` / `navigator`.
-- [ ] Loading + error + empty states rendered; `mocks/` fixture + single `MOCK_ENABLED` toggle present.
+- [ ] Loading + error + empty states rendered.
 - [ ] Slot id verified against `assets/checkout-slots-data.yaml`.
 - [ ] README in English with SDK integration notes; `tsc` and `pnpm lint` clean.

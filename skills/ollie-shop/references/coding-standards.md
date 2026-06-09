@@ -19,20 +19,6 @@ Standards that apply to every custom checkout component. Load this file when wri
 
 ---
 
-## Mocks
-
-**Mocks are mandatory, in a dedicated `mocks/` folder with a single disable switch.**
-
-Every component ships a fixture so it can be previewed without a live platform:
-
-- Put fixture(s) in a `mocks/` subfolder (e.g. `mocks/orderForm.json`).
-- Expose ONE on/off toggle from `mocks/index.ts` — `export const MOCK_ENABLED = true` — that the component/hook reads.
-- When the integration is finalized, flip the toggle to `false` (or delete `mocks/`) so the component reads only the live session.
-- Do NOT scatter inline `IS_DEV || useMock` checks across the component — centralize the switch.
-- No silent network-only components.
-
----
-
 ## `commons/` for shared / import-only modules
 
 **Components without a `meta.json` are NOT slot components** — they are import-only/shared modules.
@@ -48,7 +34,7 @@ Use this when two components would otherwise fight over the same slot: render on
 Before handoff, verify all of:
 
 1. Output in `components/<name>/` at the consumer repo root (or `commons/<name>/` for import-only modules).
-2. `index.tsx` + `index.module.css` + `meta.json` present, plus a `mocks/` fixture for slot components.
+2. `index.tsx` + `index.module.css` + `meta.json` present.
 3. `tsc` clean and lint clean.
 4. Loading + error + empty states rendered.
 5. Slot id verified against `assets/checkout-slots-data.yaml`.
@@ -73,7 +59,7 @@ Every component logs with the prefix `[<component-name>]`. Three logs are mandat
 
 - **On error** — `console.error` with `{ input, errorMessage, errorStack }` extracted explicitly (do NOT log raw `err` — minified bundles drop useful info).
 - **On every `useCheckoutAction("REQUEST")` call** — log the input before dispatch.
-- **On the paint decision** — log whether the component rendered the mock or the hydrated payload.
+- **On the paint decision** — log whether the component is rendering with live data or a fallback.
 
 Wrap every `REQUEST` in `try/catch` that returns a safe fallback (`[]`, `null`) so the slot stays alive on failure. Do not log on every render or every lifecycle hook — that pollutes prod consoles.
 
