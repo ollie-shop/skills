@@ -15,15 +15,17 @@ You are helping a developer customize a checkout on **Ollie Shop**, a platform-a
 
 ## How this skill is organized
 
-The skill has **five modes**. Pick one based on the user's intent (keywords listed). When the request straddles two modes, start with whichever produces the next concrete user-facing decision; you can hand off after.
+The skill has **seven modes**. Pick one based on the user's intent (keywords listed). When the request straddles two modes, start with whichever produces the next concrete user-facing decision; you can hand off after.
 
 | Mode | Triggers | Load |
 |---|---|---|
 | **1. CLI Operations** | "deploy", "run locally", "ollieshop", "login", "business rule", "create a version", "trigger" | `references/cli-reference.md` |
-| **2. SDK & Coding** | "how do I use", "hook", "session", "useCheckoutAction", "styling", "anatomy" | `references/sdk-guide.md` + `references/component-anatomy.md` |
-| **3. Library lookup** | "is there a pattern for", "example of", "does Ollie already have" | `assets/components.csv` / `assets/functions.csv` + the matched entry's `INSTRUCTIONS.md` |
-| **4. Component design flow** | "create a component", "new component", "from Figma", "I want to customize" | `references/component-design-flow.md` first (cross-cutting), then the target entry's `INSTRUCTIONS.md` |
-| **5. Function authoring** | "hub function", "middleware", "external validation", "call an API", "intercept", "rewrite request" | `references/hub-functions.md` + the target function's `INSTRUCTIONS.md` |
+| **2. SDK & Coding** | "how do I use", "hook", "session", "useCheckoutAction", "anatomy", "mocks", "loading state", "coding standards", "REQUEST guard" | `references/sdk-guide.md` + `references/component-anatomy.md` + `references/coding-standards.md` |
+| **3. Slot System** | "which slot", "slot id", "slot lifecycle", "slot visibility", "slot props", "checkout-slots" | `references/slots-reference.md` + `assets/checkout-slots-data.yaml` + `references/slots-catalog.md` |
+| **4. Design Contract** | "design token", "css module", "token name", "a11y", "accessibility", "styling rules" | `references/design-contract.md` |
+| **5. Library lookup** | "is there a pattern for", "example of", "does Ollie already have", "UI primitive" | `assets/components.csv` / `assets/functions.csv` + the matched entry's `INSTRUCTIONS.md`; for UI primitives: `assets/UI/README.md` |
+| **6. Component design flow** | "create a component", "new component", "from Figma", "I want to customize", "designer", "screenshot" | `references/component-design-flow.md` first, then `references/component-authoring.md` (when designer-facing), then the target entry's `INSTRUCTIONS.md` |
+| **7. Function authoring** | "hub function", "middleware", "external validation", "call an API", "intercept", "rewrite request" | `references/hub-functions.md` + the target function's `INSTRUCTIONS.md` |
 
 ## Question hierarchy — read this before asking the user anything
 
@@ -41,6 +43,7 @@ If you can't tell which entry matches, finish the design flow first, then re-che
 - **Components are self-contained**. A component is a default-exported React function in `./components/<Name>/index.tsx` that uses `@ollie-shop/sdk` hooks for state and dispatch. Never call the underlying commerce platform directly — the SDK is the anti-corruption layer.
 - **Slots belong to a template**. The default template ships around 60 slots (see `references/slots-catalog.md`). Slot ids are stable strings; some are **dynamic** with a `{{ variable }}` segment — treat them as a pattern, not a fixed list (e.g. `payment_option_{{ paymentMethodName }}` matches `payment_option_pix`, `payment_option_promissory`, and any future method without a skill update).
 - **Functions are HTTP middleware**. A function intercepts a request or response on the hub. Request functions can rewrite `requestInit` (headers, cookies, auth) before forwarding, or respond directly without proxying. Response functions can mutate the payload or reject it. PCI-protected destinations are blocked at the hub.
+- **Coding standards** (mocks, `commons/` layout, definition-of-done, REQUEST guards, loading states, observability) live in `references/coding-standards.md` — load it alongside `sdk-guide.md` when writing component code.
 - **Customization tooling lives in the customer's repo under `.claude/ollie/`** (managed by Ollie, replaced on update). Anything outside that directory is the customer's own and is never touched by tooling sync.
 
 ## Local dev loop (single source of truth)
@@ -55,22 +58,9 @@ When you're happy with the result, **deploy from Studio's preview UI** (for comp
 
 ## Working with business rules
 
-Business rules document the merchant's customization intent and can link to specific versions, components, and functions. List, get, and update them with `ollieshop business-rule …` — full commands in `references/cli-reference.md`. When implementing a customization, ask whether there is a business rule to link it to; if not, ask if the user wants you to create one.
+Business rules document the merchant's customization intent and can link to specific versions, components, and functions. List, get, and update them with `ollieshop business-rule …` — full commands in `references/cli-reference.md`. Merchant-specific business rules are also documented in markdown under `references/business-rules/` (one file per merchant). When implementing a customization, ask whether there is a business rule to link it to; if not, ask if the user wants you to create one.
 
 ## Figma and design integration
 
 If the user mentions Figma, suggest installing the Figma MCP — with MCP the agent reads the design structure directly, which is much more reliable than a screenshot. This is part of the cross-cutting design flow; do not ask "do you have a Figma?" inside an `INSTRUCTIONS.md` — that question lives in `component-design-flow.md`.
 
-## Quick reference
-
-| Topic | Where |
-|---|---|
-| CLI commands (login, init, start, deploy, business-rule, schema) | `references/cli-reference.md` |
-| SDK hooks + component contract | `references/sdk-guide.md` |
-| Component folder layout + dev loop | `references/component-anatomy.md` |
-| Slot ids (template default) | `references/slots-catalog.md` |
-| Design-to-code workflow + cross-cutting questions | `references/component-design-flow.md` |
-| Hub function authoring (handler signature, triggers, PCI) | `references/hub-functions.md` |
-| Reusable component patterns (agnostic) | `assets/components.csv` |
-| Reusable function patterns | `assets/functions.csv` |
-| Default template capabilities | `references/templates/default.md` |

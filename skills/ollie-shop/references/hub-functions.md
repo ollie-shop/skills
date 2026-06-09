@@ -1,131 +1,144 @@
-# Hub Functions
+# Hub Functions — Reference & Authoring Guide
 
-A **hub function** is a piece of code that runs on Ollie's hub as middleware on the request or response of a checkout endpoint. Functions let a store enforce business rules, enrich data, attach auth, or intercept calls without modifying the checkout UI or the underlying commerce platform.
+A **hub function** is a server-side request/response interceptor (a Lambda) that sits in the proxy path between the storefront and the underlying platform. Use one to enforce business rules, enrich session data, rewrite a platform response, attach auth, or short-circuit a call — instead of patching behavior in the browser.
 
-This file is the agnostic reference for how to write, configure, and deploy any function. For opinionated patterns (cart enrichment, payment restriction, reject, external validation), see the entries in `assets/functions/`.
+> Components (UI in slots) and Functions (server-side interceptors) are separate artifacts with separate layouts, build pipelines, and deploys. For components see `sdk-guide.md`.
+
+---
 
 ## Invocation types
 
 Every function picks one:
 
-- **`request`** — runs **before** the hub forwards the call upstream. Useful when the function needs to decide whether the call should proceed, rewrite the outgoing payload, attach auth, or short-circuit with a custom response.
-- **`response`** — runs **after** the upstream returns, **before** the client receives the response. Useful for enriching the payload, redacting fields, or rejecting based on what came back.
+- **`request`** — runs **before** the hub forwards the call upstream. The `res` parameter is `null` at this point. Useful when the function needs to decide whether the call should proceed, rewrite the outgoing payload, attach auth, or short-circuit with a custom response.
+- **`response`** — runs **after** the upstream returns, **before** the client receives the response. The `res` parameter is the upstream `Response`. Useful for enriching the payload, redacting fields, or rejecting based on what came back.
 
-A single function picks one invocation type per record. If a customization needs both (e.g. rewrite the request *and* mutate the response), write two functions.
+A single function picks one invocation type. If you need both (e.g. rewrite the request *and* mutate the response), write two separate functions.
 
-## Filesystem layout
+---
+
+## File layout
 
 ```
-./functions/<name>/
-├── index.ts          # exports `handler: CustomFunction`
-└── package.json      # used by the builder to install runtime deps
+functions/<function-name>/
+├── index.ts          # exports `handler: CustomFunction` — the build entry
+├── index.test.ts     # optional, vitest
+└── package.json      # see exact shape below
 ```
 
-The `index.ts` filename and the named export `handler` are required — the build step writes a thin wrapper that imports `./index.ts` and calls `createCustomFunctionHandler(handler)`. Other files (helpers, types, etc.) are fine alongside `index.ts`.
+`<function-name>` is lowercase-kebab (`cart-enrichment`).
 
-The same source layout is used regardless of invocation type — the difference between `request` and `response` is stored in the function record, not in the file structure.
+---
+
+## package.json — get this exactly right
+
+The build bundles `./index.ts` directly with **bun** (`bun build ... --target=node --format=cjs`). The package is **ESM source bundled in place**, NOT a tsc-compiled npm library. A `tsc`/`dist` style manifest **breaks the build**.
+
+✅ **Correct shape:**
+
+```json
+{
+  "name": "my-function",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "dependencies": {
+    "node-cache": "^5.1.2"
+  }
+}
+```
+
+Rules:
+- **`"type": "module"`** — functions are ESM.
+- **`"main": "./index.ts"`** — points at the TypeScript **source**, not `dist/index.js`. bun bundles from source.
+- **`dependencies`** are real npm packages — they get bundled into the output. Add only what `index.ts` imports at runtime.
+- **Do NOT** add `@ollie-shop/functions` as a dependency — the builder injects it and marks it `--external`.
+- **Do NOT** add `build`/`validate` scripts, a `types` field, or `event`/`timing`/`tags`/`priority` fields. Those came from an unrelated scaffold schema and do not drive the build.
+
+---
 
 ## Handler signature
 
 ```ts
-import type { CustomFunction } from "@ollie-shop/functions";
-
-export const handler: CustomFunction = async ({ req, res }) => {
-  // ... your logic
-};
-```
-
-The type is:
-
-```ts
+// `@ollie-shop/functions` is external — declare the type locally so the file type-checks standalone:
 type CustomFunction = (context: {
   req: Request;
   res: Response | null;
-}) => Promise<Request | Response>;
+}) => Promise<Request | Response | undefined>;
+
+export const handler: CustomFunction = async ({ req, res }) => {
+  // ...
+  return undefined; // pass-through
+};
 ```
 
-### The context object
+The builder wraps it at deploy time:
 
-- `req` — the inbound `Request`. Always present, regardless of invocation type.
-- `res` — the `Response` from the upstream call.
-  - For an **`invocation: "response"`** function: `res` is the upstream response and is always present.
-  - For an **`invocation: "request"`** function: `res` is `null` (the upstream hasn't been called yet).
+```bash
+import { createCustomFunctionHandler } from '@ollie-shop/functions';
+import { handler as customFunction } from './index.ts';
+export const handler = createCustomFunctionHandler(customFunction);
 
-The TS type widens `res` to `Response | null` for both flavors, but the schema discriminator guarantees the presence rule above at runtime. Inside a response function, write against `res` without defensive null guards; inside a request function, write against `req`.
-
-### Return contracts
-
-Pick exactly one of these per invocation:
-
-| Return value | Effect |
-|---|---|
-| The **original** `req` (request flavor) or `res` (response flavor) | Pass-through. The upstream call (request flavor) or the client response (response flavor) is unaffected. |
-| A new `Request` | The hub replaces the outbound request with the one you return. Only meaningful for request functions — use it to attach auth headers, sign the body, rewrite the URL, etc. |
-| A new `Response` | The hub stops here and returns this `Response` to the client. Short-circuits the upstream call (request flavor) or replaces the upstream payload (response flavor). See "Rejection response contract" below for the shape the checkout client expects. |
-
-Always return one of these three. There is no implicit "do nothing" — the handler must return.
-
-## Trigger configuration
-
-Each function record carries a `trigger` object in the database (set via the admin form or `ollieshop function create --trigger-url ... --trigger-expression ...`):
-
-```json
-{
-  "url": "https://<store>.<platform-host>/api/checkout/pub/orderForm",
-  "expression": "method in [\"POST\"]"
-}
+bun build _entry.ts --production --outfile=index.js \
+  --target=node --format=cjs --external @ollie-shop/functions
+zip output.zip index.js
 ```
 
-Plus, separately on the function record:
+---
 
-| Field | Type | Purpose |
+## Runtime model
+
+| `invocation` | `res` value | You return… |
 |---|---|---|
-| `invocation` | `"request"` \| `"response"` | When the function runs in the proxy lifecycle. |
-| `priority` | integer ≥ 0 | Execution order among functions that match the same call. Lower priority runs first. Defaults to `0`. |
-| `on_error` | `"throw"` \| `"skip"` | What the hub does if the function throws. `throw` aborts the proxy with the function's error; `skip` logs and continues as if the function returned the original `req`/`res`. Default `throw`. |
-| `active` | boolean | Whether the hub considers this function for matching. Default `false`. |
+| **request** (before upstream) | `null` | modified `Request` to rewrite what's sent upstream, a `Response` to short-circuit (skip upstream entirely), or `undefined` to pass through |
+| **response** (after upstream) | upstream `Response` | modified `Response` to rewrite body/headers, or `undefined` to pass through |
 
-### `trigger.url`
+- **Bodies are cached** — you may call `.json()` / `.text()` on `req`/`res` multiple times without "body already consumed". No need to `.clone()` before reading (but see [Reading without consuming](#reading-inputs-without-consuming-the-stream) if you need to forward the same body).
+- **Narrow before acting.** Gate on the URL and phase so you only process what you intend.
+- **When rewriting a response body, drop `content-length`** — the length changed:
+  ```ts
+  const headers = new Headers(res.headers);
+  headers.delete("content-length");
+  return new Response(JSON.stringify(body), { status: res.status, headers });
+  ```
+- **Session storage:** `globalThis.sessionStorage` is a real key→string store, hydrated from and serialized back to the checkout session each invocation. Use `getItem`/`setItem` to persist small values across the request/response pair or to the storefront.
+- **Env:** `process.env` is populated from the function's configured env vars for the duration of the call.
+- **Return `undefined` to pass through** — the default, fail-open behavior. Prefer it on unexpected errors so the checkout call is never broken by the function.
 
-An absolute http(s) URL that identifies the endpoint the function attaches to. The hub matches against the request's origin and path; query string is ignored for matching. The URL must be reachable from the hub — relative paths (`/api/...`) are accepted by the CLI as a shortcut but resolve against the store's platform host at deploy time.
+### Caching — use ONE request function, not two
 
-### `trigger.expression`
+Don't split a cache into a request reader + response writer — those are two separate containers and an in-memory `node-cache` is **not shared** between them (the reader never sees what the writer stored). Use ONE `invocation: "request"` function that does read-through:
 
-A JSONata-like boolean expression evaluated against the in-flight request (and the response, for response functions). When it returns `true`, the function runs.
-
-Available variables inside the expression:
-
-- `method` — HTTP method, uppercase (`"GET"`, `"POST"`, etc.).
-- `headers` — object of request headers (lowercase keys).
-- `body` — the request/response body. JSON bodies are pre-parsed when `Content-Type: application/json`; otherwise it's the text string.
-- `status` — the upstream response status code. Only meaningful for response functions; `undefined` on request triggers.
-
-Examples:
-
-```
-method in ["POST"]
-method in ["POST", "PATCH"]
-method in ["POST"] and headers."x-store" = "pharma"
-status >= 200 and status < 300
-method = "POST" and body.items[0].quantity > 5
+```ts
+const hit = cache.get(key);
+if (hit) return toResponse(hit);          // HIT → short-circuits upstream
+const upstream = await fetch(req.url, { method: req.method, headers });
+if (upstream.ok) cache.set(key, ...);     // MISS → fetch, then store
+return toResponse(upstream);
 ```
 
-Narrow the expression aggressively. A function matched against `method in ["GET"]` will fire on every read of the endpoint — that's almost never what you want for mutations.
+For a cache shared across instances, back it with an external store (Redis/ElastiCache) instead.
+
+### Fail-open vs fail-closed
+
+Decide deliberately and document it in the README:
+- **fail-open** (`return undefined` on error) — safest for checkout availability; the platform's native response wins.
+- **fail-closed** (return the restrictive outcome when eligibility is uncertain) — use only when showing something would be worse than a transient over-restriction.
+
+---
 
 ## Rejection response contract
 
-When a function returns a `Response` to short-circuit (block the call, refuse with a message, enforce a precondition), the checkout's action client picks up your message only if the `Response` follows this exact shape:
+When returning a `Response` to block a call, the checkout's action client picks up your message **only** if the response follows this exact shape:
 
-- **Status `422`.** Any other status — `400`, `403`, `409`, 5xx — falls back to a generic error message in the UI.
-- **Header `x-ollie-shop-custom-message: <your message>`.** This string is what the user sees.
-- **Body:** JSON with `error` and `details` fields. Useful for downstream consumers and logs; the user-facing copy still comes from the header.
+- **Status `422`** — any other status falls back to a generic UI error.
+- **Header `x-ollie-shop-custom-message: <your message>`** — this string is what the user sees.
+- **Body:** JSON with `error` and `details` fields (useful for logs; user-facing copy comes from the header).
 
 ```ts
 return new Response(
-  JSON.stringify({
-    error: "Validation failed",
-    details: "The quantity of this item is limited to 5.",
-  }),
+  JSON.stringify({ error: "Validation failed", details: "Qty limited to 5." }),
   {
     status: 422,
     headers: {
@@ -136,11 +149,11 @@ return new Response(
 );
 ```
 
-If you return a different status or omit the header, the front will still show *something* — but it will be a generic "an error occurred" instead of your text.
+---
 
 ## Manipulating `requestInit`
 
-The most under-appreciated capability of **request functions**: by returning a `Request` instead of the original, you can attach headers, cookies, or signed payloads the original client didn't include — typically to authenticate against a downstream API that the hub proxies on the customer's behalf.
+By returning a new `Request`, you can attach headers, cookies, or signed payloads the original client didn't include:
 
 ```ts
 return new Request(req.url, {
@@ -150,33 +163,31 @@ return new Request(req.url, {
     "x-store-key": storeKey,
     "cookie": [req.headers.get("cookie"), `myToken=${token}`].filter(Boolean).join("; "),
   },
-  body:
-    req.method === "GET" || req.method === "HEAD"
-      ? null
-      : JSON.stringify(await req.json()),
+  body: req.method === "GET" || req.method === "HEAD"
+    ? null
+    : JSON.stringify(await req.json()),
 });
 ```
 
-Cookies, signed auth, request IDs, idempotency keys, modified bodies — all fair game inside the returned `Request`.
+Don't set `body` for `GET`/`HEAD` — those methods can't have a body.
 
-Two gotchas:
-
-- The body is a stream. If you `await req.json()` to read it, you must pass the value back in the new `Request` (e.g. `JSON.stringify(await req.json())`), otherwise the upstream gets an empty body.
-- Don't set `body` for `GET` or `HEAD` — those methods are not allowed to have a body and the runtime will reject the `Request`.
+---
 
 ## Priority and chaining
 
-When multiple functions match the same call, the hub runs them in `priority` order (ascending). Within the chain:
+When multiple functions match the same call, the hub runs them in `priority` order (ascending):
 
-- Each function receives the **previous function's output** as input. A request function that returns a modified `Request` hands that modified request to the next request function in line.
-- A function that returns a `Response` **stops the chain** — no later functions in that direction run, and the response is returned to the client (or replaces the upstream payload).
-- Errors are handled per the `on_error` setting on each function independently.
+- Each function receives the **previous function's output** as input.
+- A function that returns a `Response` **stops the chain** — no later functions run in that direction.
+- Errors are handled per each function's `on_error` setting independently.
 
-When two functions need to run in a specific order, set their priorities explicitly. Default priority `0` means "no preference" and ordering becomes unstable in that case.
+Set priorities explicitly when order matters. Default `0` means unstable ordering when two functions share the same priority.
+
+---
 
 ## Reading inputs without consuming the stream
 
-`Request` and `Response` bodies are streams — they can only be read once. If you need to inspect the body and then forward it:
+`Request`/`Response` bodies are streams — they can only be read once. If you need to inspect the body and then forward it:
 
 ```ts
 const body = await req.clone().json();
@@ -184,8 +195,77 @@ const body = await req.clone().json();
 return new Request(req.url, { method: req.method, headers: req.headers, body: JSON.stringify(body) });
 ```
 
-`req.clone()` is the safe way to peek; `req.json()` directly will consume the stream and break later reads.
+Use `req.clone()` to peek; calling `req.json()` directly consumes the stream and breaks later reads.
+
+---
+
+## Testing (vitest)
+
+The handler is a plain function — test it directly, no platform needed:
+
+```ts
+const ctx = (body: unknown, url = ORDERFORM_URL) => ({
+  req: { url } as Request,
+  res: { status: 200, headers: new Headers(), json: async () => body } as unknown as Response,
+});
+const result = await handler(ctx(orderForm));
+// undefined => passed through; Response => rewritten
+```
+
+Cover: the rewrite path, the pass-through path (eligible / not-applicable URL / target absent), and the fail behavior when config can't load.
+
+---
+
+## Trigger configuration
+
+Each function record carries a `trigger` object set via the admin form or `ollieshop function create --trigger-url ... --trigger-expression ...`:
+
+```json
+{
+  "url": "https://<store>.<platform-host>/api/checkout/pub/orderForm",
+  "expression": "method in [\"POST\"]"
+}
+```
+
+Plus fields on the function record:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `invocation` | `"request"` \| `"response"` | When the function runs in the proxy lifecycle. |
+| `priority` | integer ≥ 0 | Execution order; lower runs first. Default `0`. |
+| `on_error` | `"throw"` \| `"skip"` | What hub does if function throws. `throw` aborts; `skip` logs and continues. Default `throw`. |
+| `active` | boolean | Whether hub considers this function for matching. Default `false`. |
+
+### `trigger.url`
+
+Absolute http(s) URL. Hub matches origin exactly + path via `path-to-regexp` (e.g. `/api/checkout/pub/orderForm/:id`). Query strings are ignored for matching.
+
+### `trigger.expression`
+
+A JSONata-like boolean expression evaluated against the in-flight request (and response, for response functions):
+
+| Variable | Value |
+|---|---|
+| `method` | HTTP method uppercase (`"GET"`, `"POST"`, …) |
+| `headers` | Object of request headers (lowercase keys) |
+| `body` | Parsed JSON if `Content-Type: application/json`, else text |
+| `status` | Upstream status code (response functions only; `undefined` on request triggers) |
+
+Examples:
+```
+method in ["POST"]
+method in ["POST", "PATCH"]
+method in ["POST"] and headers."x-store" = "pharma"
+status >= 200 and status < 300
+method = "POST" and body.items[0].quantity > 5
+```
+
+Narrow aggressively — a function matched on `method in ["GET"]` fires on every read of that endpoint.
+
+---
 
 ## Deploying
 
-The recommended path is the admin uploader — see the **Deploying** section of `cli-reference.md`. Briefly: zip the function folder (`./index.ts` + `./package.json`), drop it on the function's create/edit form in the admin, and the admin uploads + polls the build for you.
+Recommended path: zip the function folder (`index.ts` + `package.json`), drop it on the function's create/edit form in the admin — the admin uploads and polls the build for you. See `references/cli-reference.md` for CLI options.
+
+When a function replaces browser-side logic, keep the old client code until the function is **deployed and verified live**, then remove it — otherwise there's a window where the behavior is unguarded.
