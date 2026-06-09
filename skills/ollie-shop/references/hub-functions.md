@@ -130,10 +130,10 @@ Decide deliberately and document it in the README:
 
 ## Rejection response contract
 
-When returning a `Response` to block a call, the checkout's action client picks up your message **only** if the response follows this exact shape:
+When returning a `Response` to block a call, the checkout's action client picks up your message **only** if the response follows this shape:
 
-- **Status `422`** — any other status falls back to a generic UI error.
-- **Header `x-ollie-shop-custom-message: <your message>`** — this string is what the user sees.
+- **The actual trigger is the `x-ollie-shop-custom-message: <your message>` header** — this string is what the user sees. The action client surfaces it on the presence of the header alone; it does **not** check the status code (`error-handler.ts` keys off `error.response.headers.get("x-ollie-shop-custom-message")`).
+- **Status: any error status (4xx/5xx).** The status is not inspected, but it **must** be non-2xx so the HTTP client throws an `HTTPError` — a 2xx response is treated as success and your message is ignored. **`422` is the recommended convention** (validation failure), but `400`/`409`/etc. work identically.
 - **Body:** JSON with `error` and `details` fields (useful for logs; user-facing copy comes from the header).
 
 ```ts

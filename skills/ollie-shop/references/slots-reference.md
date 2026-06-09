@@ -147,7 +147,7 @@ All `payment_option_*` slots (except `payment_option_gift_card`) have `visibilit
 
 3. **Skeleton fallback** — remote components show a `skeleton h-auto min-h-8` div while loading (`Suspense` fallback in `RemoteComponent`).
 
-4. **`hint` prop** — passing `hint={true}` wraps the slot content in `<script data-slot="slot:start:<id>">` / `<script data-slot="slot:end:<id>">` markers. Used by the Studio editor to locate slot boundaries in the DOM.
+4. **DOM boundary markers** — every slot renders a wrapper custom element `<ollie-slot style="display: contents" data-slotid="<id>">` (plus `data-componentid="<id>"` when a custom component is mounted). `display: contents` keeps the wrapper layout-neutral. The Studio editor uses these `data-slotid`/`data-componentid` attributes to locate slot boundaries in the DOM. (This replaced the older `<script data-slot="slot:start/end">` marker approach — see `packages/react/CHANGELOG.md`. There is no `hint` prop.)
 
 5. **Custom step pages** — when a custom step's `page` string is used as a slot id (e.g. `<Slot id="LoyaltyStep" prev={...} next={...} />`), the `prev` and `next` navigation props are passed directly to the remote component.
 

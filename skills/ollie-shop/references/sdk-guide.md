@@ -227,7 +227,7 @@ CheckoutSession {
   customer?: { email, firstName, lastName, phone, document, addresses[] }
   shipping?: { packages[], availableQuotes[], addresses[], availableCountries[] }
   payment?: { availableMethods[], selectedPayments[], savedCards[] }
-  totals: { total, items, shipping, discount, interest }
+  totals: { total, items, shipping, discounts, interest }
   locale: { language, currency }
   campaign?: { coupons[], giftCards[] }
   extensions?: Record<string, unknown>
@@ -434,6 +434,25 @@ function useLogin(): {
   isLoginRequired: boolean;
   loginTitle: string | null;
 };
+```
+
+### `useNavigation`
+
+```ts
+function useNavigation(validator: () => boolean): {
+  unregisterStepValidator: () => void;
+};
+```
+
+Registers a **step validator** — a function the checkout calls before advancing to the next step. Return `true` to allow navigation, `false` to block it (e.g. your custom step has invalid input). The validator is registered on mount and torn down on unmount; call the returned `unregisterStepValidator` to remove it early.
+
+This is **not** an imperative router — there is no `push`/`navigate`/`back`. It only gates step progression. For actually moving between built-in steps, use the `prev`/`next` props forwarded to custom step-page slots (see `references/slots-reference.md`).
+
+```tsx
+useNavigation(() => {
+  // block "continue" until the user accepts the terms
+  return termsAccepted;
+});
 ```
 
 ---

@@ -21,10 +21,7 @@ DaisyUI convention: `--color-{role}` + `--color-{role}-content` for text/icon on
 
 ### Typography
 
-| Token | Use for |
-|---|---|
-| `--font-primary` | Default UI family |
-| `--font-mono` | Numbers, codes, coupons |
+**There are no font-family tokens** (no `--font-primary` / `--font-mono` in `tailwind.css`). Inherit the host's family — use `font: inherit` or `font-family: inherit` in your components rather than referencing a token that won't resolve. For tabular figures (numbers, codes, coupons) use `font-variant-numeric: tabular-nums` (and a generic `monospace` fallback if you truly need a mono face).
 
 No canonical tokens for sizes/weights yet — use `rem` inline. Common scale: `0.75rem` caption, `0.875rem` sm, `1rem` body, `1.125rem` lg, `1.25rem` xl. Weights: `500` labels, `600` CTA/headings.
 
@@ -92,7 +89,7 @@ Transitions: `200ms ease-out` standard. Collapse/expand `100ms ease-in-out`. Mod
 
 ## 4. Component patterns
 
-**Button** — height `2.75rem`, padding `0 1rem`, radius `--radius-field`, `font-family: var(--font-primary)`, `1rem`, weight `600`.
+**Button** — height `2.75rem`, padding `0 1rem`, radius `--radius-field`, `font-family: inherit`, `1rem`, weight `600`.
 
 | Variant | Background | Text |
 |---|---|---|
@@ -127,7 +124,7 @@ Transitions: `200ms ease-out` standard. Collapse/expand `100ms ease-in-out`. Mod
 
 ## 6. Iconography
 
-Library: custom SVG from `batman-ui` ([`IconSet.tsx`](packages/batman-ui/src/components/Icon/IconSet.tsx), 75 icons). Use `currentColor` (inherits from text). Sizes (px, inline): `xs 16`, `sm 20`, `md 24` (default), `lg 32`, `xl 40`.
+Library: custom SVG from `batman-ui` ([`IconSet.tsx`](packages/batman-ui/src/components/Icon/IconSet.tsx), 81 icons). Use `currentColor` (inherits from text). Sizes (px, inline): `xs 16`, `sm 20`, `md 24` (default), `lg 32`, `xl 40`.
 
 ---
 
@@ -152,7 +149,7 @@ Durations: `fast 100ms` (hover, collapse), `base 200ms` (state changes, floating
 - ❌ Tailwind utility classes in custom components — CSS Modules only.
 - ❌ Hard-coded colors in hex/rgb/oklch inline. Always `var(--color-*)`.
 - ❌ `px` for internal spacing — use `rem`. `px` only for borders, breakpoints, icon dimensions.
-- ❌ Fonts outside `--font-primary` / `--font-mono`.
+- ❌ Hard-coding a `font-family` — inherit the host's (`font: inherit` / `font-family: inherit`); there are no font tokens.
 - ❌ `outline: none` without a visible `:focus-visible` replacement.
 - ❌ Animating `opacity` on price, total, or payment CTA.
 - ❌ `!important` in CSS Modules.
@@ -174,7 +171,7 @@ Durations: `fast 100ms` (hover, collapse), `base 200ms` (state changes, floating
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  font-family: var(--font-primary);
+  font-family: inherit;
   color: var(--color-base-content);
 }
 @media (min-width: 768px) { .card { padding: 1.5rem; } }
@@ -235,6 +232,7 @@ Durations: `fast 100ms` (hover, collapse), `base 200ms` (state changes, floating
 Once decided, add to [`tailwind.css`](packages/config/tailwind.css) and update this contract:
 
 - `--color-text-muted`, `--color-border`, `--color-action-hover` (today ad-hoc via `opacity` / `color-mix`)
+- Font-family tokens (`--font-primary`, `--font-mono`) — **do not exist today**; components inherit the host family via `font: inherit`
 - Spacing scale (`--space-*`)
 - Font-size scale (`--font-size-*`)
 - Shadows (`--shadow-sm/md/lg`)
