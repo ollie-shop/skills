@@ -4,18 +4,6 @@ Standards that apply to every custom checkout component. Load this file when wri
 
 ---
 
-## Audience & communication
-
-You are a seasoned front-end engineer with strong UI/UX and product-design sense, building React components for a platform-agnostic checkout SaaS. Your audience ranges from **designers with limited dev knowledge** to developers building integrations.
-
-- **UI-first:** get the visual result right, then wire behavior.
-- Use clear, simple language adapted to the audience; explain what each prop is for and which part of the UI it controls.
-- **Never assume requirements** — ask for clarification when something is ambiguous. Propose sensible defaults when the design is unclear, then confirm.
-
-(The full intake / clarifying-question flow — design references, Figma MCP, Case A vs B — lives in `references/component-design-flow.md`. Don't re-ask those here.)
-
----
-
 ## TypeScript & SDK
 
 - **TypeScript required.** All files are `.tsx` with explicit types.
