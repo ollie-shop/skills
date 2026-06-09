@@ -77,11 +77,13 @@ Before handoff, verify all of:
 
 ---
 
-## Defer ambiguous decisions with `// TODO(?)`
+## Ambiguous decisions — ask first, `// TODO(?)` as a fallback
 
-When the spec doesn't pin down a platform detail (envelope shape, name→id resolution, fallback when a lookup fails, replace vs augment, retry policy, etc.), do NOT stop to ask in chat. Implement the simplest default that works and leave a one-line `// TODO(?): <question>` next to it. The user resolves TODOs in review.
+When the spec doesn't pin down a platform detail (envelope shape, name→id resolution, fallback when a lookup fails, replace vs augment, retry policy, etc.), **ask the user** — preferably batched up front, per the pause-and-ask rule in `references/component-design-flow.md`. Anything that changes the approach or could ship the wrong behavior is a question, not a guess.
 
-Examples:
+When asking isn't worth it — a minor, non-blocking detail that surfaces mid-implementation, or the user isn't around — implement the simplest default that works and leave a one-line `// TODO(?): <question>` next to it so it's resolved in review. Never silently guess on something load-bearing.
+
+Examples of TODO-worthy (minor) calls:
 - `// TODO(?): when categoryId lookup fails, fall back to ft= name search or hide?`
 - `// TODO(?): retry on 5xx or fail closed?`
 
@@ -95,7 +97,7 @@ Every component logs with the prefix `[<component-name>]`. Three logs are mandat
 - **On every `useCheckoutAction("REQUEST")` call** — log the input before dispatch.
 - **On the paint decision** — log whether the component is rendering with live data or a fallback.
 
-Wrap every `REQUEST` in `try/catch` that returns a safe fallback (`[]`, `null`) so the slot stays alive on failure. Do not log on every render or every lifecycle hook — that pollutes prod consoles.
+REQUEST failures don't reach a component `try/catch` — `ky` throws server-side, the action-client converts it to a `ServerError`, and you receive it via the `onError` callback / `error.serverError` (your `await` resolves, it doesn't throw). Handle errors there and return a safe fallback (`[]`, `null`) for the paint; every slot is already wrapped in an `ErrorBoundary` as a last resort. Do not log on every render or every lifecycle hook — that pollutes prod consoles.
 
 ---
 
@@ -104,7 +106,7 @@ Wrap every `REQUEST` in `try/catch` that returns a safe fallback (`[]`, `null`) 
 A REQUEST has many failure modes beyond network throws. All of these are mandatory, not optional:
 
 - **Validate input before dispatch.** If a required URL fragment (`platformStoreId`, `categoryId`, `sku`, etc.) is empty or falsy, skip the call entirely and log `skipping REQUEST — <field> missing`. Never build a URL with an empty segment and wait for a 404.
-- **Check HTTP status BEFORE parsing.** `REQUEST` does NOT throw on 4xx/5xx — it resolves with `{ status: 500, data: … }`. Guard explicitly: `if (!response || response.status >= 400) { log + return fallback }`.
+- **Handle failures via `onError` / `error.serverError`, not a status check.** On a 4xx/5xx (or network failure) the platform call throws server-side; the SDK's action-client converts it to a `ServerError` and delivers it through the `onError` callback (and `error.serverError`). It is **not** re-thrown into your `await`, and you do **not** get a `{ status: 500 }` object back — so put fallback logic in `onError`, and also treat a missing/`undefined` result from `executeAsync` as failure before using it.
 - **Unwrap progressively with optional chaining.** Never `response.data.data[0]` directly — each layer can be missing. Use `response?.data?.data?.[0]` and handle `undefined` at every step. The platform envelope may be single-wrapped, double-wrapped, or empty depending on the endpoint.
 - **Empty is not an error.** `products?.length === 0` means "no match" — render the baseline or hide, do not throw or show "Error loading". Only network / 5xx / shape-mismatch are errors.
 - **Abort on unmount.** If your `useEffect` dispatches a REQUEST, track a `cancelled` flag and bail in cleanup. A late response that calls `setState` on an unmounted component can crash the slot.

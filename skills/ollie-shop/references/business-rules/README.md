@@ -11,7 +11,7 @@ Alongside the human-readable `rule.md`, a merchant may have a machine artifact *
 ```jsonc
 {
   "platform": "vtex",
-  "platformStoreId": "auchan",
+  "platformStoreId": "acme",
   "logo": "https://.../logo.svg",
   "theme": { /* themeClassification — brand colors, typography, button/input style */ },
   "businessRules": [ /* same rules as rule.md, with category/confidence/isThirdParty */ ]
@@ -48,11 +48,11 @@ The store's `ollie.json` (project root) is the source of truth that feeds Supaba
 
 `buttonStyle.textTransform` (e.g. `uppercase`) also has no token — surface it as a prop or in the component CSS, not in `theme`.
 
-Result shape (`ollie.json`): `{ storeId, theme: { "--color-*": "...", "--radius-*": "..." }, props: { font: { fontFamily, href } } }`. `ollie.json` is `passthrough`, so these extra fields are valid. See the auchan `ollie.json` for a worked example.
+Result shape (`ollie.json`): `{ storeId, theme: { "--color-*": "...", "--radius-*": "..." }, props: { font: { fontFamily, href } } }`. `ollie.json` is `passthrough`, so these extra fields are valid. See a merchant's `ollie.json` for a worked example.
 
 ## Convention
 
-- One file per merchant (e.g. `lojausereserva.md`, `my-store.md`).
+- One file per merchant (e.g. `acme-store.md`, `my-store.md`).
 - Frontmatter fields:
   - `title` — human-readable name
   - `platform` — e.g. `VTEX`, `Shopify`
