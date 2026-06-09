@@ -1,391 +1,682 @@
 # Ollie Shop SDK Guide
 
-The SDK package is **`@ollie-shop/sdk`**. It exposes the React hooks a custom checkout component uses to read checkout state, dispatch actions, and react to UX events, plus the TypeScript types those hooks return.
+Reference for building custom checkout components using the `@ollie-shop/sdk`.
 
-Everything a custom component needs is available from the single `@ollie-shop/sdk` entry. Don't reach into `@ollie-shop/react` or `@libs/schemas` directly — those are implementation details that may change.
+## Table of Contents
 
-## Component contract
+1. [Component Interface](#component-interface)
+2. [SDK Hooks](#sdk-hooks)
+3. [State Management](#state-management)
+4. [Styling & Design Tokens](#styling--design-tokens)
+5. [Platform Abstraction](#platform-abstraction)
+6. [Error Handling](#error-handling)
+7. [Testing Components](#testing-components)
+8. [Best Practices](#best-practices)
 
-A custom component is a React function exported as `default` from `./components/<name>/index.tsx`. It takes its own props (configured via the component's `props` JSON in the database, surfaced by the slot) and renders into a template slot.
+---
+
+## Component Interface
+
+Every Ollie Shop component exports a default function matching the `CustomComponent` type from `@ollie-shop/sdk`.
+
+### Component Signature
 
 ```tsx
-// ./components/FreeShippingBar/index.tsx
+import type { CustomComponent } from "@ollie-shop/sdk";
 import { useCheckoutSession } from "@ollie-shop/sdk";
-import styles from "./styles.module.css";
 
-export default function FreeShippingBar({ thresholdCents = 19900 }: { thresholdCents?: number }) {
+const MyComponent: CustomComponent<MyProps> = ({ props, children }) => {
+  const { myProp = "default" } = props || {};
   const { session } = useCheckoutSession();
-  // session.totals.items is the items subtotal in minor units (cents).
-  const remainingCents = Math.max(0, thresholdCents - session.totals.items);
 
-  if (remainingCents === 0) {
-    return <div className={styles.unlocked}>You unlocked free shipping!</div>;
-  }
+  // Option A — augment: keep the native default and add on top
+  // return <>{children}<MyExtra /></>;
 
-  const formatted = new Intl.NumberFormat(session.locale.language, {
-    style: "currency",
-    currency: session.locale.currency,
-  }).format(remainingCents / 100);
+  // Option B — replace: ignore children and take over the slot
+  // return <MyOwnUI />;
+};
 
+export default MyComponent;
+```
+
+The `CustomComponent<P>` generic type injects:
+
+- `props` — admin-configured prop values (overrides code defaults)
+- `children` — the slot's native default UI.
+
+#### Children: replace vs augment
+
+A custom component always **receives** the slot's default UI as `children`. What it does with them is a deliberate choice:
+
+| Strategy | What the component does | When to use |
+|---|---|---|
+| **Replace** | Ignores `children` and renders its own UI from scratch | The component owns the entire slot concern (e.g. a coupon input that fully substitutes the native coupon form). |
+| **Augment** | Renders `{children}` plus extra UI around/below | Keep the native behavior and add on top (e.g. a free-shipping badge above the native totalizer). **Default choice when in doubt** — preserves native UX. |
+
+Rule of thumb: if omitting your component would leave a gap in the UX, render `{children}`. If your component *is* the UX, don't.
+
+To read cart, customer, shipping, payment, totals, extensions, etc., always use the **`useCheckoutSession()`** hook (see below). Do **not** destructure `cart` from the function arguments — it is not provided that way.
+
+### Slot context props vs admin props
+
+Some slots forward `context_props` — runtime values the slot passes to its custom component (e.g. `item` on `cart_item_addons`, `item`/`formatPrice`/`onRemoveItem` on `cart_item`). The authoritative list of what a given slot forwards lives in that component's `assets/components/<id>/INSTRUCTIONS.md`.
+
+**Context props arrive at the TOP LEVEL of the component signature, alongside `children` — NOT nested inside `props`.** The `props` key is reserved for admin-configured values declared in `meta.json`.
+
+```tsx
+// cart_item_addons — forwards `item` as a context prop
+export default function MyAddon({ item, children }) {
+  if (item?.available === false) return null;
   return (
-    <div className={styles.bar}>Add {formatted} more for free shipping.</div>
+    <>
+      {children}
+      <MyExtra />
+    </>
   );
 }
 ```
 
-No `props` field is injected by the SDK. Whatever your component declares as props is what the slot will pass (defaults coming from the component record's `props` JSON).
+**`item` runtime shape** (forwarded by any slot that declares `item` in its `context_props`):
+
+```ts
+type CartItem = {
+  id: string; // SKU code (NOT a productId / refId)
+  sellerId?: string; // marketplace seller/vendor id (slug-like, e.g. "acme-store")
+  name: string; // display name
+  variant?: string; // e.g. "Pack of 1", "Size Large", "Red"
+  brand?: string; // brand DISPLAY name (e.g. "Nike") — NOT a brandId
+  category?: string; // category DISPLAY name (e.g. "Electronics") — NOT a categoryId
+  price: number; // current/sale price in MINOR units (cents)
+  originalPrice: number; // non-sale price in minor units
+  quantity: number;
+  available: boolean;
+  index: number; // position in the cart
+  image: string; // image URL
+  uniqueId: string; // cart-line unique id (distinct from `id` — two lines of same SKU can exist)
+  url?: string; // PDP URL
+  variantDetails?: Record<string, string>; // e.g. { color: "Red", size: "M" }
+};
+```
+
+Typing tip: if your component has both context props and admin-configured props, destructure both levels:
+
+```tsx
+interface AdminProps {
+  giftWrapSkuId?: string;
+}
+interface SlotProps {
+  item?: CartItem;
+  props?: AdminProps;
+  children?: ReactNode;
+}
+
+export default function MyAddon({ item, props, children }: SlotProps) {
+  const { giftWrapSkuId = "35127" } = props || {};
+  // ...
+}
+```
+
+**Known quirks to confirm live:** the canonical SDK type `CustomComponent<P>` shows only `({ props, children })`, but the runtime also forwards context props at top level. When in doubt, `console.log(arguments[0])` and inspect every key the slot gives you — and check the component's `INSTRUCTIONS.md` for the documented context-prop shape.
+
+**Display names vs platform IDs (pitfall):** context-prop fields like `item.category`, `item.brand`, `item.seller` arrive as **human-readable strings** (e.g. `"Shoes"`), NOT as the platform-native IDs (e.g. VTEX `categoryId = 123`). Substituting the name into a URL that expects an ID — `fq=C:{categoryId}` on VTEX Search, brand/seller filters, etc. — will silently fail or return wrong results.
+
+**Where to get the ID.** The SDK does **not** own platform catalog data. `useCheckoutAction("REQUEST")` is a passthrough — it proxies your HTTP call to whatever absolute URL you give it and returns the raw response untouched. For anything outside the `CheckoutSession` (product catalog, categoryId lookups, brand metadata, stock), hit the **platform API directly** via `REQUEST` and read the **platform's own docs** for the endpoint + response shape. There is no SDK-level abstraction of those responses.
+
+**Practical options:**
+
+1. **Name→id map in `meta.json -> props`** — admin-configurable per merchant, avoids a live lookup. Best when the category set is small and stable.
+2. **Live lookup via `REQUEST` to the platform's catalog API** — e.g. VTEX `/api/catalog_system/pub/category/tree/N` to resolve a name to an id. Adds a round-trip and you own the parsing.
+3. **Fallback to the name-based filter the platform offers** — e.g. VTEX `ft=<name>` instead of `fq=C:{id}`. Cheapest, but matching is fuzzier.
+
+### File Layout
+
+> **CRITICAL:** The entry point `index.tsx` **MUST** be at the component root folder. Components are discovered via the glob `*/index.tsx` — placing the entry point inside a subdirectory (e.g. `src/index.tsx`) will break discovery, builder validation, and production builds.
+
+```
+components/
+└── my-component/
+    ├── index.tsx                    # Entry point — default exports the CustomComponent
+    ├── components/                  # Presentational sub-components (optional)
+    │   └── SubComponent.tsx
+    ├── hooks/                       # Data/logic hooks (optional)
+    │   └── useMyComponent.ts
+    ├── utils/                       # Pure helpers (optional)
+    ├── types.ts                     # Shared interfaces (optional)
+    ├── index.module.css             # Component styles
+    └── meta.json                    # Component metadata + slot assignment
+
+commons/                            # Import-only / shared modules — NO meta.json,
+└── shared-thing/                   # NOT discovered as slot components. Imported by
+    └── index.tsx                   # real components via e.g. "../../commons/shared-thing".
+```
+
+> **`meta.json` decides registration.** A folder under `components/` with a `meta.json` is registered to the slot it names. A module WITHOUT a `meta.json` is not a slot component — keep those in a top-level `commons/` folder (sibling of `components/`) so the `components/*/index.tsx` glob never picks them up, and import them from the real component that uses them. This is the fix when two components would otherwise compete for the same slot: render one inside the other and move the inner one to `commons/`.
+
+> **One manifest per component: `meta.json`.** Do NOT emit a per-component `ollie.json` — there is no documented schema for one and the CLI does not consume it. `meta.json` is the only canonical artifact at the component level. (The root-level `ollie.json` exists at the project root and carries `storeId` / `platformStoreId`, but that is a different file with a different scope.)
+
+### meta.json Schema
+
+```json
+{
+  "name": "free-shipping-bar",
+  "version": "1.0.0",
+  "slot": "header",
+  "description": "Shows progress toward free shipping threshold",
+  "props": {
+    "target": { "type": "number", "default": 99, "required": false }
+  }
+}
+```
+
+Constraints:
+
+- `name`: lowercase alphanumeric + hyphens, no leading/trailing hyphens, max 50 chars
+- `version`: semver format (`1.0.0`, `2.1.0-beta.1`)
+- `props`: max 20 props per component, each typed as `string | number | boolean | object | array`
+- `tags`: max 5 tags, each max 20 chars
+- Reserved names: `index`, `checkout`
+
+Props declared in `meta.json` can be overridden via the Admin without code changes.
 
 ---
 
-## Hooks
+## SDK Hooks
 
-The SDK exports **eight** hooks. Each one connects to a context provider that the host checkout sets up; if you call a hook outside that provider you get inert defaults.
+All hooks are imported from `@ollie-shop/sdk`. These are the complete set of hooks available to custom components.
 
-| Hook | What it gives you | When to reach for it |
-|---|---|---|
-| `useCheckoutSession` | The parsed checkout session + helpers | Read cart, customer, shipping, payment state. |
-| `useCheckoutAction` | Type-safe dispatcher for one checkout action | Mutate the session (add item, update coupon, change shipping, etc.). |
-| `usePendingActions` | Which actions are currently in flight | Disable buttons / show spinners while a mutation runs. |
-| `useMessages` | Toast-like notifications | Add success/error messages from a component (auto-resolves `ServerError` to translated text). |
-| `useStoreInfo` | Static store metadata + the active components map | Need to know the platform, store id, or what other components are mounted. |
-| `useCheckoutOrder` | The finalized order (after CREATE_ORDER) | Render the order confirmation screen. |
-| `useLogin` | Open / close the login modal | Components that gate behavior behind authentication. |
-| `useNavigation` | Register a validator that runs before step transitions | Block "next step" until your component's state is valid. |
+### Defensive reads (applies to every hook)
+
+Hook return values may be **`undefined`** during early renders (HMR rebuild, pre-hydration, provider race). The SDK type signatures show non-optional returns, but the runtime can give you `undefined` and a direct destructure will throw `TypeError: Cannot destructure property 'X' of undefined`, killing the slot.
+
+**Never destructure a hook result directly.** Always coalesce first, treat every field as optional:
+
+```ts
+// ❌ Will crash if the hook returns undefined during the first render
+const { platformStoreId } = useStoreInfo();
+
+// ✅ Safe
+const storeInfo = useStoreInfo() ?? {};
+const platformStoreId =
+  (storeInfo as { platformStoreId?: string }).platformStoreId ?? "";
+
+// ✅ Same pattern for useCheckoutSession, useMessages, etc.
+const { session } = useCheckoutSession() ?? {};
+const cartItems = session?.cartItems ?? [];
+```
+
+If the field is missing, render the loading or empty state — do not throw.
 
 ### `useCheckoutSession`
 
 ```ts
-const {
-  session,        // CheckoutSession — parsed, platform-agnostic snapshot
-  rawSession,     // unknown — raw payload from the platform (e.g. VTEX orderForm)
-  updateSession,  // (session, raw) => void — manually replace the session
-  sessionValidate,// (session, opts?) => { valid: true } | { valid: false, errors }
-  sessionValidity,// last validation result
-  revalidate,     // () => void — re-fetch from the platform (rarely the right call — see below)
-  revalidateAsync,// () => Promise<...>
-  isFallback,     // true if session came from a cached fallback after an API failure
-  fallbackError,  // string when isFallback
-  clearFallback,  // () => void
-} = useCheckoutSession();
+function useCheckoutSession<
+  Extensions extends Record<string, unknown> = Record<string, unknown>,
+>(): CheckoutSessionContextValue<Extensions>;
 ```
 
-The session is **generic** over extensions: `useCheckoutSession<MyExtensions>()` lets you read store-specific custom fields the platform attached. Default extensions type is an empty record.
+**Returns:**
 
-Read state through `session.*` for the typed shape; only drop down to `rawSession` if you genuinely need a platform-specific field that's not on `CheckoutSession`.
+| Field             | Type                                                            | Description                               |
+| ----------------- | --------------------------------------------------------------- | ----------------------------------------- |
+| `session`         | `CheckoutSession<Extensions>`                                   | Parsed, platform-agnostic session         |
+| `rawSession`      | `unknown`                                                       | Raw platform data (VTEX order form, etc.) |
+| `updateSession`   | `(session, rawSession) => void`                                 | Imperatively override session in context  |
+| `sessionValidity` | `ValidationSuccess \| ValidationFailure \| undefined`           | Live Zod validation result                |
+| `sessionValidate` | `(session, options?) => ValidationSuccess \| ValidationFailure` | On-demand validation                      |
+| `revalidate`      | `() => void`                                                    | Re-fetch session from platform            |
+| `revalidateAsync` | `() => Promise<...>`                                            | Same, awaitable                           |
+| `isFallback`      | `boolean`                                                       | True when session is from stale cache     |
+| `fallbackError`   | `string \| undefined`                                           | Error message when `isFallback` is true   |
+| `clearFallback`   | `() => void`                                                    | Reset fallback state                      |
 
-**Do not call `revalidate()` after dispatching a checkout action.** `useCheckoutAction` already updates the session on success (except for `REQUEST`, `SIMULATE_SESSION`, and `CREATE_ORDER`, which return their own shape and don't mutate the session). Calling `revalidate()` triggers a redundant round-trip and can race with the action's own update. Reach for `revalidate()` only in the rare case where state could have drifted outside of any action you dispatched — e.g. after a background event you cannot observe — and even then, prefer dispatching a `REQUEST` action with `revalidate: true` so the refetch is sequenced with the rest of the action queue.
+**Session Shape (key fields):**
 
-#### Authoritative shape of `session`
-
-The schema below is what the SDK actually returns. Use these field names exactly; the d.ts in `@ollie-shop/sdk` is the source of truth if you need a field not listed here.
-
-**`session.totals` — all amounts in minor units (cents).**
-
-| Field | Type | Notes |
-|---|---|---|
-| `items` | `number` | Items subtotal (no shipping, no discounts). This is the field most "free shipping threshold" / "minimum order" rules want. |
-| `total` | `number` | Grand total (items + shipping + tax + interest − discounts). |
-| `shipping` | `number?` | Total shipping cost. |
-| `tax` | `number?` | Total tax amount. |
-| `discounts` | `number?` | Total discounts (positive number representing what was subtracted). |
-| `giftCard` | `number?` | Amount paid with gift cards. |
-| `interest` | `number?` | Interest from multi-installments. |
-| `change` | `number?` | Change amount. |
-
-**`session.locale`.**
-
-| Field | Type | Example |
-|---|---|---|
-| `currency` | `string` | ISO 4217 — `"BRL"`, `"USD"`. |
-| `language` | `string` | `"pt-BR"`, `"en"`, `"es"`. |
-| `country` | `string` | ISO 3166-1 alpha-3 — `"BRA"`, `"USA"`. |
-
-**`session.cartItems[]` — each amount in minor units (cents).**
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | `string` | SKU code or platform item id. |
-| `uniqueId` | `string` | Unique line id (platform-specific). |
-| `index` | `number` | Position in the cart. |
-| `name` | `string` | Display name. |
-| `price` | `number` | Current sale price in cents. |
-| `originalPrice` | `number` | Pre-sale price in cents. Use this as the base for promotional preview math; `price` already reflects applied discounts. |
-| `quantity` | `number` | |
-| `available` | `boolean` | |
-| `image` | `string` | URL. |
-| `url` | `string?` | PDP link. |
-| `sellerId`, `variant`, `brand`, `category`, `variantDetails` | optional | Display extras when present. |
-
-#### Typed extras (`session.extensions`) vs raw platform extras (`rawSession`)
-
-Two different channels carry "extra" data on top of the parsed session — they look similar but are not the same:
-
-- **`session.extensions`** is the **typed** channel. Reach for it via `useCheckoutSession<MyExtensions>()` and define `MyExtensions` as a `Record<string, unknown>` of fields you control. Use it when your own code (hub function, store config) attaches data to the session in a known shape.
-- **`rawSession`** is the **unparsed** payload from the underlying commerce platform (VTEX orderForm, Shopify cart, etc.). It carries every platform-specific field — including fields a paired hub function may write under custom paths. Its shape varies per platform; treat any access as platform-coupled.
-
-Default rule: prefer `session.*` (parsed, platform-agnostic) for everything that's there. Drop to `session.extensions` for your own typed extras. Drop to `rawSession` only for platform-specific data the parsed session doesn't expose. Don't reach into `rawSession` for fields that already live on `session`.
+```ts
+CheckoutSession {
+  id: string
+  cartItems: CartItem[]
+  customer?: { email, firstName, lastName, phone, document, addresses[] }
+  shipping?: { packages[], availableQuotes[], addresses[], availableCountries[] }
+  payment?: { availableMethods[], selectedPayments[], savedCards[] }
+  totals: { total, items, shipping, discounts, interest }
+  locale: { language, currency }
+  campaign?: { coupons[], giftCards[] }
+  extensions?: Record<string, unknown>
+  readOnly: boolean
+}
+```
 
 ### `useCheckoutAction`
 
-The single dispatcher for every mutation. The action name is type-checked, the payload is inferred from the action, and the response is automatically reconciled with the session (except for `REQUEST`, `SIMULATE_SESSION`, and `CREATE_ORDER`, which return their own shape).
+The primary mutation API. All checkout state changes flow through typed server actions.
 
 ```ts
-const { execute, executeAsync, isPending, error } = useCheckoutAction(
-  "ADD_ITEMS",
-  {
-    onSuccess: (updatedSession, input) => { /* ... */ },
-    onError: ({ serverError, validationErrors }) => { /* ... */ },
+function useCheckoutAction<Action extends ActionType, Input, ResponseType>(
+  actionType: Action,
+  callback?: {
+    onSuccess?: (data?: ResponseType, input?: Input) => void;
+    onError?: ({ serverError, validationErrors }) => void;
   },
-);
-
-execute([{ id: "sku-1", quantity: 2 }]); // input is typed per action
+): {
+  execute: (input: Input) => void;
+  executeAsync: (input: Input) => Promise<ResponseType | undefined>;
+  isPending: boolean;
+  error?: {
+    serverError?: ServerError;
+    validationErrors?: ValidatorErrors<Input>;
+  };
+};
 ```
 
-**Action names** (the keys of `ActionMap`):
+**Available Actions:**
 
-| Action | Input | Use for |
-|---|---|---|
-| `ADD_ITEMS` | `CartItemInput[]` | Add SKUs to cart. |
-| `REMOVE_ITEMS` | `number[]` (indexes) | Remove items by their cart index. |
-| `UPDATE_ITEMS_QUANTITY` | `{ index, quantity }[]` | Change quantity of existing items. |
-| `UPDATE_COUPONS` | `string[]` | Apply / replace coupon codes. |
-| `UPDATE_CUSTOMER_DETAILS` | `Partial<CustomerData>` | Name, email, phone, document. |
-| `UPDATE_CUSTOMER_PREFERENCES` | `Partial<CustomerPreferences>` | Marketing opt-ins, etc. |
-| `UPDATE_SHIPPING_PACKAGES` | `ShippingPackageInput[]` | Pick a shipping option per package. |
-| `UPDATE_SHIPPING_ADDRESSES` | `ShippingAddressInput[]` | Change delivery address(es). |
-| `UPDATE_PAYMENT_METHODS` | `PaymentMethodInput[]` | Choose payment(s). |
-| `UPDATE_GIFT_CARDS` | `GiftCardInput[]` | Apply / remove gift cards. |
-| `SIMULATE_SESSION` | `SimulateCheckoutSessionInput` | Preview what the session would look like with hypothetical inputs (does not commit). |
-| `CREATE_NEW_SESSION` | `unknown` | Reset to a fresh session. |
-| `CREATE_ORDER` | `CreateOrderInput` | Finalize and create the order. |
-| `REQUEST` | `{ url, method?, headers?, body?, revalidate? }` | Escape hatch for arbitrary HTTP through the checkout backend. See the dedicated `REQUEST` subsection below for URL host, body, response envelope, and `revalidate` rules. |
+| Action name                   | Input type                                       | Effect                                                                                                                                                                                                            |
+| ----------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ADD_ITEMS`                   | `CartItemInput[]`                                | Adds items to the cart                                                                                                                                                                                            |
+| `REMOVE_ITEMS`                | `number[]` (item indexes)                        | Removes items from the cart                                                                                                                                                                                       |
+| `UPDATE_ITEMS_QUANTITY`       | `{ index: number; quantity: number }[]`          | Updates quantities                                                                                                                                                                                                |
+| `UPDATE_COUPONS`              | `string[]` (coupon codes)                        | Applies/removes coupons                                                                                                                                                                                           |
+| `UPDATE_CUSTOMER_DETAILS`     | `Partial<CustomerData>`                          | Updates customer (email, name, etc.)                                                                                                                                                                              |
+| `UPDATE_CUSTOMER_PREFERENCES` | `Partial<CustomerPreferences>`                   | Updates customer preferences                                                                                                                                                                                      |
+| `UPDATE_SHIPPING_PACKAGES`    | `ShippingPackageInput[]`                         | Selects shipping method for packages                                                                                                                                                                              |
+| `UPDATE_SHIPPING_ADDRESSES`   | `ShippingAddressInput[]`                         | Sets/updates shipping addresses                                                                                                                                                                                   |
+| `UPDATE_PAYMENT_METHODS`      | `PaymentMethodInput[]`                           | Selects payment method(s)                                                                                                                                                                                         |
+| `UPDATE_GIFT_CARDS`           | `GiftCardInput[]`                                | Applies/removes gift cards                                                                                                                                                                                        |
+| `SIMULATE_SESSION`            | `SimulateCheckoutSessionInput`                   | Simulates session (no state update)                                                                                                                                                                               |
+| `REQUEST`                     | `{ url, method?, headers?, body?, revalidate? }` | Raw HTTP request via server action. **`url` MUST be absolute** (`https://...`) — relative paths starting with `/` will fail because the request runs server-side and has no storefront origin to resolve against. See response envelope note below. |
+| `CREATE_NEW_SESSION`          | `unknown`                                        | Creates a fresh checkout session                                                                                                                                                                                  |
 
-`isPending` and the `usePendingActions` hook below both let you reflect the action's loading state.
-
-#### `REQUEST` — calling external endpoints
-
-`REQUEST` is the escape hatch for any HTTP call that isn't covered by a typed checkout action — a store-specific endpoint, a third-party validator, persisting custom data alongside the orderForm, etc. The hub forwards the call server-side, so it carries the checkout session and platform auth without the bundle ever touching them directly.
+**`REQUEST` response envelope.** The action wraps the platform's response in its own metadata envelope:
 
 ```ts
-const { platformStoreId } = useStoreInfo();
-const { executeAsync, isPending } = useCheckoutAction("REQUEST");
-
-await executeAsync({
-  url: `https://${platformStoreId}.vtexcommercestable.com.br/api/checkout/pub/orderForm/${id}/customData/recipe`,
-  method: "PUT",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ item: JSON.stringify(recipes) }),
-  revalidate: true,
-});
+type RequestResponse<T> = {
+  data: T;                          // platform's native payload
+  status: number;                   // HTTP status from the platform
+  headers: [string, string][];      // response headers
+};
 ```
 
-Six details trip people up:
-
-1. **URL must be absolute.** A relative path (e.g. `/api/checkout/...`) does not resolve against the store — the hub is a separate origin and has no implicit host. Always build the full `https://...`.
-
-2. **VTEX-native routes go to `vtexcommercestable.com.br`, not `myvtex.com`.** Anything that starts with `/api/` (checkout-pub, master-data, orders, catalog) targets `https://{platformStoreId}.vtexcommercestable.com.br`. That host is the fastest path and the same one the rest of the checkout uses — hub functions matched to the same URL will fire. Routes that start with `/_v/` (VTEX IO custom services) live on the store's CNAME or `*.myvtex.com` instead. Read `platformStoreId` from `useStoreInfo()`:
-
-   ```ts
-   const { platformStoreId } = useStoreInfo();
-   const VTEX_API = `https://${platformStoreId}.vtexcommercestable.com.br`;
-   await executeAsync({ url: `${VTEX_API}/api/checkout/pub/orderForm/${id}/items`, ... });
-   ```
-
-3. **`body` must be a string** — typically `JSON.stringify(...)`. The hub does **not** serialize objects automatically. Passing `body: { foo: "bar" }` as a plain object results in an empty request payload (the field arrives `undefined` on the upstream); setting `Content-Type: application/json` in `headers` does not change that. Always stringify before passing. For multipart payloads (binary file uploads, etc.) `REQUEST` cannot help — use `fetch` directly with `credentials: "include"` when the bundle runs on the same origin as the store:
-
-   ```ts
-   const fd = new FormData();
-   fd.append("file", file, file.name);
-   const res = await fetch(`${VTEX_API}/_v/services/uploadImage`, {
-     method: "POST",
-     body: fd,
-     credentials: "include",
-   });
-   const { data: imageUrl } = await res.json();
-   ```
-
-4. **Response envelope is axios-like.** The upstream body comes back inside `{ data, status, headers }`. In some hub paths it is nested one level deeper (`res.data.data`). A defensive extractor keeps consumers tidy:
-
-   ```ts
-   function extractResponseBody<T>(res: unknown): T | undefined {
-     if (!res || typeof res !== "object") return undefined;
-     const obj = res as Record<string, unknown>;
-     if (obj.data && typeof obj.data === "object") {
-       const inner = (obj.data as Record<string, unknown>).data;
-       if (inner !== undefined) return inner as T;
-       return obj.data as T;
-     }
-     return res as T;
-   }
-
-   const res = await executeAsync({ url, method: "GET" });
-   const body = extractResponseBody<MyShape>(res);
-   ```
-
-5. **`revalidate: true` only on the LAST request of a multi-step flow.** Each `revalidate` re-pulls the session from the platform; chaining them means every step blocks on a round-trip and intermediate state can race with the next request. Set `revalidate: false` (the default) on intermediate steps, and `revalidate: true` only on the final mutation that the UI needs to reflect.
-
-6. **Chained `REQUEST`s use a single hook with sequential `await`s.** When the flow needs more than one HTTP call in order (discover → authorize → apply), instantiate **one** `useCheckoutAction("REQUEST")` at the top of the component and call `await executeAsync(...)` in sequence inside the same async handler. Do not create a separate `useCheckoutAction("REQUEST")` per call and stitch them together via `onSuccess` callbacks — the second call may never fire (callbacks aren't a substitute for await), and you lose the ability to read the previous response inline.
-
-   ```ts
-   const { platformStoreId } = useStoreInfo();
-   const { addMessage } = useMessages();
-   const { executeAsync, isPending } = useCheckoutAction("REQUEST");
-
-   async function applyDiscount(cpf: string, ean: string) {
-     try {
-       // Step 1 — discover. No revalidate yet (intermediate).
-       const authRes = await executeAsync({
-         url: "https://www.mystore.com.br/_v/app/authorize",
-         method: "POST",
-         headers: { "Content-Type": "application/json" },
-         body: JSON.stringify({ cpf, ean }),
-       });
-       const auth = extractResponseBody<{ approved: boolean }>(authRes);
-       if (!auth?.approved) {
-         addMessage({ type: "error", content: "Not authorized." });
-         return;
-       }
-
-       // Step 2 — apply. revalidate only on the last blocking step.
-       await executeAsync({
-         url: "https://www.mystore.com.br/_v/app/apply",
-         method: "POST",
-         headers: { "Content-Type": "application/json" },
-         body: JSON.stringify([{ ean, document: cpf }]),
-         revalidate: true,
-       });
-
-       addMessage({ type: "success", content: "Discount applied." });
-     } catch (err) {
-       addMessage({ type: "error", content: "Could not apply discount." });
-     }
-   }
-   ```
-
-### `usePendingActions`
+If the upstream platform itself wraps responses (VTEX does on many endpoints), you get **double-nesting**: `response.data.data` is the actual payload. Always unwrap explicitly rather than passing `response` straight into a parser. Pattern:
 
 ```ts
-const { hasPendingActions, pendingActions } = usePendingActions();
-// pendingActions: ActionType[] — e.g. ["ADD_ITEMS", "UPDATE_COUPONS"]
+const response = await execute({ url: "https://acme.vtexcommercestable.com.br/api/...", method: "GET" });
+const platformPayload = response?.data;      // unwrap RequestResponse
+const actualData = platformPayload?.data ?? platformPayload; // unwrap platform envelope if present
+// TODO(?): does this endpoint double-wrap? confirm against platform docs.
 ```
 
-Use this when one component needs to disable itself while a different component's action is in flight (e.g. don't let the user submit the order while a coupon update is still pending).
+**Input Type Definitions:**
+
+```ts
+type CartItemInput = {
+  id: string; // product/SKU identifier
+  quantity: number;
+  sellerId?: string; // marketplace seller
+};
+
+type PaymentMethodInput = {
+  methodId: string; // matches PaymentMethod.id
+  referenceValue: number; // amount in minor units (cents)
+  installments?: number; // defaults to 1 if omitted
+  accountId?: string; // saved card account ID
+};
+
+type ShippingAddressInput = {
+  id?: string;
+  type?: "home" | "billing" | "work" | "pick_up" | "search" | "other";
+  street?: string;
+  number?: string;
+  complement?: string;
+  reference?: string;
+  neighborhood?: string;
+  city?: string;
+  country?: string;
+  stateOrProvince?: string;
+  postalCode?: string;
+  receiverName?: string;
+};
+
+type ShippingPackageInput = {
+  id: string; // package identifier
+  items: number[]; // cart item indexes
+  addressId?: string;
+  selectedTimeSlotId?: string; // delivery time slot
+  type?: "delivery" | "pick_up";
+};
+
+type GiftCardInput = {
+  code: string;
+  provider?: string;
+};
+
+type CustomerData = {
+  id?: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  document?: string;
+  phone?: string;
+  addresses?: CustomerAddress[];
+};
+
+type CustomerPreferences = {
+  saveData?: boolean;
+  locale?: string;
+};
+```
+
+**Usage example (split payments):**
+
+```ts
+const { execute } = useCheckoutAction("UPDATE_PAYMENT_METHODS");
+execute([{ methodId: "201", referenceValue: orderTotal, installments: 3 }]);
+```
+
+### `useCheckoutOrder`
+
+```ts
+function useCheckoutOrder(): {
+  order: CheckoutOrder;
+  raw: unknown;
+};
+```
+
+Read the confirmed order on the order-confirmation page (`/order/[orderId]`).
 
 ### `useMessages`
 
 ```ts
-const { messages, addMessage, removeMessage, clearAll } = useMessages();
+function useMessages(): {
+  messages: Message[];
+  addMessage: (message: Omit<Message, "id">) => void;
+  removeMessage: (messageId: string) => void;
+  clearAll: () => void;
+};
 
-// direct
-addMessage({ type: "success", content: "Coupon applied" });
-
-// from a ServerError — the message is auto-resolved through the translation chain
-addMessage({ type: "error", error: result.error.serverError });
-```
-
-`messages` is the current list (each `{ id, type, content, title? }`). The host renders them; you just push/pop.
-
-#### Pairing `useMessages` with `useCheckoutAction`
-
-Any async action that hits the network should pair a loading state with a `useMessages` push on both success and failure. This is the default pattern; it should not be optional.
-
-```ts
-const { platformStoreId } = useStoreInfo();
-const { addMessage } = useMessages();
-const { executeAsync, isPending } = useCheckoutAction("REQUEST");
-
-async function applyCoupon(code: string) {
-  try {
-    await executeAsync({
-      url: `https://${platformStoreId}.vtexcommercestable.com.br/api/checkout/pub/orderForm/${id}/coupon`,
-      method: "POST",
-      body: JSON.stringify({ text: code }),
-      revalidate: true,
-    });
-    addMessage({ type: "success", content: "Coupon applied." });
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : "";
-    addMessage({
-      type: "error",
-      content: detail ? `Could not apply coupon. ${detail}` : "Could not apply coupon.",
-    });
-  }
+interface Message {
+  id: string;
+  type: "info" | "success" | "warning" | "error";
+  content: React.ReactNode;
+  title?: React.ReactNode;
 }
-
-// In the JSX:
-<button onClick={() => applyCoupon(value)} disabled={isPending}>
-  {isPending ? <Spinner /> : "Apply"}
-</button>
 ```
-
-Three things make this the default:
-
-- `isPending` from `useCheckoutAction` (or a manual `useState` for non-action flows like a direct `fetch`) drives the button's disabled state and a spinner / skeleton. The user sees that something is happening.
-- On success, `addMessage` confirms the action so the user is not left wondering if it worked.
-- On error, `addMessage` surfaces the failure instead of leaving the UI silently broken. Logging to `console` does not count — the customer cannot see the console.
-
-Without this pattern, the UI either looks frozen (no loading) or lies (silent failure). Both are real bugs reported in production pilots.
 
 ### `useStoreInfo`
 
 ```ts
-const { platform, platformStoreId, components } = useStoreInfo();
+function useStoreInfo(): Omit<StoreInfo, "messages">;
 ```
 
-Static metadata for the store and the resolved list of `CustomComponent`s being rendered. The hook also transparently merges in any Studio-mode components when the developer is previewing locally via `ollieshop start`.
+The hook can return `undefined` during early renders — apply the defensive read pattern (see top of §SDK Hooks) before destructuring.
 
-### `useCheckoutOrder`
+The fields below are the documented set. The runtime payload may carry additional keys not listed here (e.g. `logo`, `versionId`); inspect `console.log(useStoreInfo())` if you suspect a field exists but isn't documented yet.
 
-Only meaningful on the order confirmation screen.
+| Field             | Type                                   | Notes                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `storeId`         | `string \| undefined`                  | Ollie store identifier                                                                                                                                                                                                                                                                                                                                                                                             |
+| `platformStoreId` | `string \| undefined`                  | Platform-native store identifier. On VTEX this is the **account name** (e.g. `"olliepartnerus"`) used to build `https://{platformStoreId}.vtexcommercestable.com.br/...` URLs. Sourced from `ollie.json` at the store root. Prefer this over exposing a `vtexAccount` prop on components — every platform-specific catalog call (best sellers, category tree, brand lookup, stock, etc.) should read it from here. |
+| `platform`        | `string`                               | e.g. `"vtex"`                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `template`        | `TemplateType \| undefined`            | Active template key                                                                                                                                                                                                                                                                                                                                                                                                |
+| `theme`           | `Record<string, string> \| undefined`  | Design token overrides                                                                                                                                                                                                                                                                                                                                                                                             |
+| `settings`        | `Record<string, unknown> \| undefined` | Arbitrary store settings                                                                                                                                                                                                                                                                                                                                                                                           |
+| `props`           | `StoreInfoProps \| undefined`          | Flags, shipping, integrations, steps                                                                                                                                                                                                                                                                                                                                                                               |
+| `components`      | `CustomComponent[] \| undefined`       | Registered slot components                                                                                                                                                                                                                                                                                                                                                                                         |
+
+### `usePendingActions`
 
 ```ts
-const { order, raw } = useCheckoutOrder();
+function usePendingActions(): {
+  hasPendingActions: boolean;
+  pendingActions: ActionType[];
+  addActionNameForLoading: (action: ActionType, isEarly?: boolean) => void;
+  removeActionNameForLoading: (action: ActionType) => void;
+};
 ```
 
-`order` is the parsed `CheckoutOrder`; `raw` is whatever the platform returned. The provider resolves a promise internally, so it suspends until the order is ready.
+Use to show loading states while actions are in flight.
 
 ### `useLogin`
 
 ```ts
-const { openLogin, closeLogin, isLoginRequired, loginTitle, loginRef } = useLogin();
-
-openLogin({ isRequired: true, title: "Sign in to continue" });
+function useLogin(): {
+  loginRef: React.RefObject<HTMLDialogElement | null>;
+  openLogin: (options?: { isRequired?: boolean; title?: string }) => void;
+  closeLogin: () => void;
+  isLoginRequired: boolean;
+  loginTitle: string | null;
+};
 ```
-
-`isRequired` disables backdrop close. Use this in components that gate a behavior on authentication (e.g. "save address" needs a logged-in customer).
 
 ### `useNavigation`
 
 ```ts
+function useNavigation(validator: () => boolean): {
+  unregisterStepValidator: () => void;
+};
+```
+
+Registers a **step validator** — a function the checkout calls before advancing to the next step. Return `true` to allow navigation, `false` to block it (e.g. your custom step has invalid input). The validator is registered on mount and torn down on unmount; call the returned `unregisterStepValidator` to remove it early.
+
+This is **not** an imperative router — there is no `push`/`navigate`/`back`. It only gates step progression. For actually moving between built-in steps, use the `prev`/`next` props the host forwards to custom step-page slots (when a custom step's `page` string is used as a slot id, e.g. `<Slot id="LoyaltyStep" prev={...} next={...} />`).
+
+```tsx
 useNavigation(() => {
-  // return false to block the next-step transition
-  return form.isValid;
+  // block "continue" until the user accepts the terms
+  return termsAccepted;
 });
 ```
 
-Registers a single validator that the host calls before advancing to the next checkout step. The most recently registered validator wins; returning `true` (or not calling the hook at all) allows the transition. The hook also returns `{ unregisterStepValidator }` if you need to clear the validator imperatively.
+---
+
+## State Management
+
+### SDK State (Shared Across Components)
+
+All custom components share the same React and SDK instances from the host application. Checkout state is managed via the SDK hooks — `useCheckoutSession()` for reading, `useCheckoutAction()` for mutations. This is the primary mechanism for sharing state.
+
+### Component-Local State
+
+Use standard React `useState`/`useReducer` for UI-local state (form inputs, toggles, animations). Keep local state minimal — prefer SDK state for anything that other components need to see.
+
+### Cross-Component Communication
+
+Each custom component runs as an **isolated bundle**. Components do NOT share user-defined modules with each other.
+
+**Shared React Context across components does NOT work** — each component bundle creates its own context object. A Provider in ComponentA will never reach a Consumer in ComponentB. There is no "wrapper slot" where a shared Provider can be mounted above multiple slots.
+
+**Patterns for sharing state between components (in order of preference):**
+
+1. **SDK checkout hooks** — when the shared state fits the checkout session model. All components read the same session via `useCheckoutSession()` and mutate it via `useCheckoutAction()`.
+
+2. **Custom DOM events** — for signaling between components when the state does not belong in the checkout session:
+
+```tsx
+// Producer component
+window.dispatchEvent(
+  new CustomEvent("my-store:card-selected", {
+    detail: { cardId, last4 },
+  }),
+);
+
+// Consumer component
+useEffect(() => {
+  const handler = (e: CustomEvent) => setCard(e.detail);
+  window.addEventListener("my-store:card-selected", handler);
+  return () => window.removeEventListener("my-store:card-selected", handler);
+}, []);
+```
+
+3. **Window globals with event notification** — for complex shared state that needs to persist beyond a single event.
+
+### Window-Level Session API
+
+External scripts (non-React) can subscribe to session changes:
+
+```js
+window.addEventListener("checkoutSessionUpdated", () => {
+  const session = window.__CHECKOUT_SESSION__;
+  const raw = window.__RAW_CHECKOUT_SESSION__;
+});
+```
+
+These globals are updated after every successful mutation action.
 
 ---
 
-## Styling
+## Styling & Design Tokens
 
-Components ship their own CSS modules:
+CSS Modules are supported (`import styles from './styles.module.css'`). Runtime theme overrides are exposed via `useStoreInfo().theme`.
 
-```
-./components/FreeShippingBar/
-├── index.tsx
-├── styles.module.css
-└── meta.json
-```
-
-Import with `import styles from "./styles.module.css"`. The bundler treats `react`, `react-dom`, `next`, `next-intl`, and `@ollie-shop/sdk` as external, so you should not bundle them yourself — they're provided by the host checkout at runtime.
-
-Avoid importing global CSS or third-party CSS-in-JS frameworks unless you've confirmed they're compatible with the host's runtime. CSS modules are the safe default.
+For the canonical design-token list, interaction-state rules, responsive rules, accessibility requirements, copywriting tone, and the canonical CSS Module example, see **`references/design-contract.md`**. Do not duplicate those rules here.
 
 ---
 
-## What is intentionally not exposed
+## Platform Abstraction
 
-The host checkout has additional providers internally (analytics, Studio gateway, reCAPTCHA, etc.). Those are not part of the public SDK and may change without notice. If you find yourself wanting one of them, it's a signal to either:
-- Solve the problem with the existing 8 hooks plus a `REQUEST` action, or
-- Talk to the Ollie team about promoting the missing capability to the SDK.
+The SDK provides an **anti-corruption layer over checkout session state** — cart, customer, shipping, payment, totals — so components don't have to know whether the backend is VTEX, Shopify, etc.
+
+**What is abstracted (read + mutate via SDK):**
+
+- **Cart state** — `useCheckoutSession().session` provides a platform-agnostic `CheckoutSession` regardless of backend.
+- **Mutations** — `useCheckoutAction()` translates typed actions (`UPDATE_COUPONS`, `ADD_ITEMS`, …) into platform-specific calls server-side.
+- **Payment** — methods, installments, saved cards are normalized into a consistent schema.
+- **Shipping** — addresses, packages, quotes follow a unified model.
+
+**What is NOT abstracted (you hit the platform directly):**
+
+- **Product catalog, categoryId/brandId lookups, stock, search, reviews, loyalty balances, etc.** — anything that isn't part of the checkout session. `useCheckoutAction("REQUEST", { url, … })` is a **pure HTTP proxy**: it forwards your call server-side (so you don't leak tokens to the browser) and returns the response **unchanged**. There is no normalization — read the platform's own docs to know the shape of what comes back, and do your own parsing. If you later switch platforms, you replace these calls yourself; the SDK won't cover for you.
+
+### Session Extensions
+
+The `CheckoutSession` accepts a generic `Extensions` parameter for platform-injected data:
+
+```ts
+type CheckoutSession<E extends Record<string, unknown>> = {
+  // ... standard fields ...
+  extensions?: E;
+};
+
+// Usage in a component:
+interface MyExtensions {
+  loyaltyData: LoyaltyData;
+}
+const { session } = useCheckoutSession<MyExtensions>();
+// session.extensions?.loyaltyData is now typed
+```
+
+Extensions are typically populated by Hub Functions that enrich the session server-side. See `references/functions-guide.md`.
+
+### When to Use External APIs
+
+Prefer using a Function to enrich the session server-side, then read the data via `useCheckoutSession()`. Only call external APIs directly from a component when the scope is purely UI or restricted to a single slot/component.
+
+---
+
+## Error Handling
+
+### Action Errors
+
+Every `useCheckoutAction` call provides structured error information:
+
+```ts
+const { execute, error } = useCheckoutAction("UPDATE_PAYMENT_METHODS", {
+  onError: ({ serverError, validationErrors }) => {
+    // serverError — structured error with `message` and optional `code`
+    // validationErrors — Zod validation errors for the input
+  },
+});
+```
+
+- `error.serverError` — server-side error (network failure, platform rejection)
+- `error.validationErrors` — client-side Zod validation failures on the input
+- Session is **not** updated on error
+
+### Fallback State
+
+When the platform API fails, the session may be served from a stale cache:
+
+```ts
+const { session, isFallback, fallbackError, clearFallback } =
+  useCheckoutSession();
+
+if (isFallback) {
+  // Show warning: data may be stale
+  // fallbackError contains the error message
+}
+```
+
+Call `revalidate()` or `revalidateAsync()` to force a fresh fetch and clear fallback state.
+
+### Slot Error Boundaries
+
+Every `<Slot>` is wrapped in an `ErrorBoundary`, so a crash in your component never takes down the parent tree: in Studio mode the slot shows a detailed debug UI, in production a generic fallback message. You still own graceful in-component error handling — the boundary is a last resort, not your error strategy.
+
+### Messages System
+
+Use `useMessages()` to surface errors to the user:
+
+```ts
+const { addMessage } = useMessages();
+addMessage({ type: "error", content: "Payment failed. Please try again." });
+```
+
+---
+
+
+## Known-absent APIs
+
+The SDK surface documented above is **exhaustive** for the current release. If a capability is not listed in §SDK Hooks, it does not exist. Do NOT stub fake helpers or invent namespaces to paper over a gap.
+
+Two concrete pitfalls seen in the wild:
+
+- **No imperative `sdk.cart.*` namespace.** Mutations go through `useCheckoutAction(...)` (e.g. `UPDATE_COUPONS`, `ADD_ITEMS`, `UPDATE_ITEMS_QUANTITY`). There is no `sdk.cart.applyCoupon()` / `sdk.cart.setMarketingTags()` / etc.
+- **No shared React Context across components.** Each component is its own bundle; `React.createContext(...)` values do not cross bundle boundaries. Coordinate state via SDK actions, not context.
+
+Anything else you reach for that isn't in §SDK Hooks — telemetry, toasts, imperative navigation, a11y announcers, persistent storage helpers, etc. — also does not exist. If your component genuinely needs one, surface the gap to the skill maintainer instead of stubbing `sdk.foo()` in shipped code.
+
+---
+
+## Best Practices
+
+### Do
+
+- Use SDK hooks for all data access — never fetch directly from platform APIs
+- Handle loading and error states in every component
+- Use design tokens for styling consistency
+- Keep components focused on a single responsibility
+- Test with multiple cart states (empty, single item, many items, edge cases)
+- Keep the component's files within its own folder tree (subfolders like `components/`, `hooks/` are fine)
+
+### Don't
+
+- Don't hard-code platform-specific logic (e.g., VTEX API calls)
+- Don't store sensitive data in component state
+- Don't rely on global DOM manipulation — work within the slot boundary
+- Don't assume a specific template layout — use slot constraints
+- Don't skip accessibility (a11y) — checkout must be accessible
+- Don't import files from *another* component's folder — keep imports within this component's own tree (subfolders are fine)
+- Don't import `.svg`, `.png`, or `.jpg` files — use inline SVG React components or data URIs instead
+- Don't share React Context across component bundles — it won't work (each bundle gets its own context object)
+- Don't use slot values not in the ComponentSlot enum
+- Don't place payment-tagged components on non-payment slots (`payment-method` or `checkout-summary` only)
+
+### Asset Constraints
+
+The build pipeline only supports `.ts`, `.tsx`, `.js`, `.jsx`, and `.css` files.
+
+```tsx
+// INVALID — image imports fail at build
+import visaLogo from "../../assets/visa.svg";
+
+// VALID — inline SVG component
+export function VisaIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 48 32" {...props}>
+      <path d="..." />
+    </svg>
+  );
+}
+
+// VALID — data URI for small assets
+export const logo = `data:image/svg+xml,${encodeURIComponent("<svg>...</svg>")}`;
+```
