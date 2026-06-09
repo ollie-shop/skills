@@ -71,7 +71,7 @@ Before handoff, verify all of:
 2. `index.tsx` + `index.module.css` + `meta.json` present.
 3. `tsc` clean and lint clean.
 4. Loading + error + empty states rendered.
-5. Slot id verified against `assets/checkout-slots-data.yaml`.
+5. Slot id verified against `references/slots-catalog.md` / `assets/slots.json`.
 6. `index.tsx` entry at the component root (subfolders/cross-folder imports within the component tree are fine).
 7. Only tokens from `references/design-contract.md` used in CSS.
 

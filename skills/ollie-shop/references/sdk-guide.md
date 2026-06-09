@@ -42,13 +42,24 @@ export default MyComponent;
 The `CustomComponent<P>` generic type injects:
 
 - `props` — admin-configured prop values (overrides code defaults)
-- `children` — the slot's native default UI. Render `{children}` to keep it (augment) or omit it to replace. See `references/slots-reference.md` §Children: Replace vs Augment.
+- `children` — the slot's native default UI.
+
+#### Children: replace vs augment
+
+A custom component always **receives** the slot's default UI as `children`. What it does with them is a deliberate choice:
+
+| Strategy | What the component does | When to use |
+|---|---|---|
+| **Replace** | Ignores `children` and renders its own UI from scratch | The component owns the entire slot concern (e.g. a coupon input that fully substitutes the native coupon form). |
+| **Augment** | Renders `{children}` plus extra UI around/below | Keep the native behavior and add on top (e.g. a free-shipping badge above the native totalizer). **Default choice when in doubt** — preserves native UX. |
+
+Rule of thumb: if omitting your component would leave a gap in the UX, render `{children}`. If your component *is* the UX, don't.
 
 To read cart, customer, shipping, payment, totals, extensions, etc., always use the **`useCheckoutSession()`** hook (see below). Do **not** destructure `cart` from the function arguments — it is not provided that way.
 
 ### Slot context props vs admin props
 
-The slot registry (`assets/checkout-slots-data.yaml`) declares `context_props` for some slots — runtime values the slot forwards to its custom component (e.g. `item` on `cart_item_addons`, `item`/`formatPrice`/`onRemoveItem` on `cart_item`).
+Some slots forward `context_props` — runtime values the slot passes to its custom component (e.g. `item` on `cart_item_addons`, `item`/`formatPrice`/`onRemoveItem` on `cart_item`). The authoritative list of what a given slot forwards lives in that component's `assets/components/<id>/INSTRUCTIONS.md`.
 
 **Context props arrive at the TOP LEVEL of the component signature, alongside `children` — NOT nested inside `props`.** The `props` key is reserved for admin-configured values declared in `meta.json`.
 
@@ -105,7 +116,7 @@ export default function MyAddon({ item, props, children }: SlotProps) {
 }
 ```
 
-**Known quirks to confirm live:** the canonical SDK type `CustomComponent<P>` shows only `({ props, children })`, but the runtime also forwards context props at top level. When in doubt, `console.log(arguments[0])` and inspect every key the slot gives you — the slot registry's `context_props_shape` field (when populated) is the authoritative reference for each slot.
+**Known quirks to confirm live:** the canonical SDK type `CustomComponent<P>` shows only `({ props, children })`, but the runtime also forwards context props at top level. When in doubt, `console.log(arguments[0])` and inspect every key the slot gives you — and check the component's `INSTRUCTIONS.md` for the documented context-prop shape.
 
 **Display names vs platform IDs (pitfall):** context-prop fields like `item.category`, `item.brand`, `item.seller` arrive as **human-readable strings** (e.g. `"Shoes"`), NOT as the platform-native IDs (e.g. VTEX `categoryId = 123`). Substituting the name into a URL that expects an ID — `fq=C:{categoryId}` on VTEX Search, brand/seller filters, etc. — will silently fail or return wrong results.
 
@@ -446,7 +457,7 @@ function useNavigation(validator: () => boolean): {
 
 Registers a **step validator** — a function the checkout calls before advancing to the next step. Return `true` to allow navigation, `false` to block it (e.g. your custom step has invalid input). The validator is registered on mount and torn down on unmount; call the returned `unregisterStepValidator` to remove it early.
 
-This is **not** an imperative router — there is no `push`/`navigate`/`back`. It only gates step progression. For actually moving between built-in steps, use the `prev`/`next` props forwarded to custom step-page slots (see `references/slots-reference.md`).
+This is **not** an imperative router — there is no `push`/`navigate`/`back`. It only gates step progression. For actually moving between built-in steps, use the `prev`/`next` props the host forwards to custom step-page slots (when a custom step's `page` string is used as a slot id, e.g. `<Slot id="LoyaltyStep" prev={...} next={...} />`).
 
 ```tsx
 useNavigation(() => {
@@ -598,7 +609,7 @@ Call `revalidate()` or `revalidateAsync()` to force a fresh fetch and clear fall
 
 ### Slot Error Boundaries
 
-See `references/slots-reference.md` §Constraints — slot-level error isolation is documented there.
+Every `<Slot>` is wrapped in an `ErrorBoundary`, so a crash in your component never takes down the parent tree: in Studio mode the slot shows a detailed debug UI, in production a generic fallback message. You still own graceful in-component error handling — the boundary is a last resort, not your error strategy.
 
 ### Messages System
 

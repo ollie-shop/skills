@@ -2,6 +2,8 @@
 
 Slots are the extension points the checkout template exposes. A **slot** has a stable id (a string) and lives at a specific position in the rendered tree. Injecting a custom component into a slot **replaces** the template's default content for that position. Multiple stores can target the same slot id and each gets its own component.
 
+**One custom component per slot.** A store's components are resolved by finding the single entry whose `slot` matches the id — there is no stacking, ordering, or fallback chain. If two requirements target the same slot, consolidate them into one component (render one inside the other), or move one to a narrower/adjacent slot. Your component always *receives* the slot's default UI as `children`: render `{children}` to keep it (augment) or omit it to take over (replace). See `sdk-guide.md` §Component Interface → "Children: replace vs augment".
+
 This catalog covers the **default template** only. Slots belong to a template — other templates would publish their own catalog with potentially different ids. The machine-readable source is [`assets/slots.json`](../assets/slots.json).
 
 ## Dynamic slots
@@ -100,6 +102,8 @@ When a user says "customize the PIX section", resolve to `payment_option_pix` �
 | `step_navigation_place_order_button` | "Complete with X" CTA at the bottom of the payment step. |
 | `payment_option_{{ paymentMethodName }}` | **Dynamic**. One slot per payment method configured for the store. See "Dynamic slots" above. |
 | `payment_{{ paymentType }}_content` | **Dynamic**. Inner content area inside a payment option. See "Dynamic slots" above. |
+
+> **Visibility gotcha — `payment_option_*`.** Every `payment_option_*` slot (except `payment_option_gift_card`) only mounts when the user actively clicks that payment method's tab — it does **not** exist in the DOM until then. Never place a primary CTA, confirm button, or anything that must be visible as soon as the payment step renders at a `payment_option_*` slot. Use `payment_method_options` for content that must be present immediately.
 
 ## Order Page
 
