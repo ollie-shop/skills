@@ -24,7 +24,7 @@ The skill has **seven modes**. Pick one based on the user's intent (keywords lis
 | **3. Slot System** | "which slot", "slot id", "slot lifecycle", "slot visibility", "slot props", "checkout-slots" | `references/slots-reference.md` + `assets/checkout-slots-data.yaml` + `references/slots-catalog.md` |
 | **4. Design Contract** | "design token", "css module", "token name", "a11y", "accessibility", "styling rules" | `references/design-contract.md` |
 | **5. Library lookup** | "is there a pattern for", "example of", "does Ollie already have", "UI primitive" | `assets/components.csv` / `assets/functions.csv` + the matched entry's `INSTRUCTIONS.md`; for UI primitives: `assets/UI/README.md` |
-| **6. Component design flow** | "create a component", "new component", "from Figma", "I want to customize", "designer", "screenshot" | `references/component-design-flow.md` first, then `references/component-authoring.md` (when designer-facing), then the target entry's `INSTRUCTIONS.md` |
+| **6. Component design flow** | "create a component", "new component", "from Figma", "I want to customize", "designer", "screenshot" | `references/component-design-flow.md` first, then the target entry's `INSTRUCTIONS.md`; use `references/coding-standards.md` for React/TS conventions when writing the code |
 | **7. Function authoring** | "hub function", "middleware", "external validation", "call an API", "intercept", "rewrite request" | `references/hub-functions.md` + the target function's `INSTRUCTIONS.md` |
 
 ## Question hierarchy — read this before asking the user anything

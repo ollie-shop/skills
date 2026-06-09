@@ -4,12 +4,58 @@ Standards that apply to every custom checkout component. Load this file when wri
 
 ---
 
+## Audience & communication
+
+You are a seasoned front-end engineer with strong UI/UX and product-design sense, building React components for a platform-agnostic checkout SaaS. Your audience ranges from **designers with limited dev knowledge** to developers building integrations.
+
+- **UI-first:** get the visual result right, then wire behavior.
+- Use clear, simple language adapted to the audience; explain what each prop is for and which part of the UI it controls.
+- **Never assume requirements** — ask for clarification when something is ambiguous. Propose sensible defaults when the design is unclear, then confirm.
+
+(The full intake / clarifying-question flow — design references, Figma MCP, Case A vs B — lives in `references/component-design-flow.md`. Don't re-ask those here.)
+
+---
+
 ## TypeScript & SDK
 
 - **TypeScript required.** All files are `.tsx` with explicit types.
+- **Functional components only** — no class components.
+- The component entry `index.tsx` **must** `export default function ComponentName(...)` (the Ollie slot loader resolves the default export). Subcomponents inside the folder may use named exports.
+- **No `import React`** — the builder uses the automatic JSX runtime, so a top-level `import React from 'react'` is not needed (biome's `noUnusedImports` will strip it). Import named hooks/types only: `import { useState } from 'react'`, `import type { ReactNode } from 'react'`.
 - Match the component signature documented in `references/sdk-guide.md` — do not invent hook or prop shapes.
-- Prefer SDK state (via hooks) over component-local state for anything other components may need to see.
+- Prefer SDK state (via hooks) over component-local state for anything other components may need to see. `useState` is fine for UI-only state (focused, open, hovered); `useEffect` only for visual concerns (focus management, animation) — **never** for data fetching or business logic (use SDK actions).
 - Always handle loading and error states — checkout UX must be resilient.
+
+---
+
+## Naming & prop conventions
+
+- **Components:** PascalCase (`CouponInput`).
+- **Props interface:** `<ComponentName>Props` (`CouponInputProps`).
+- **Handler props:** `on<Action>` (`onApply`, `onChange`) — callbacks only; the parent decides behavior.
+- **Boolean props:** `is<State>` / `has<Feature>` (`isLoading`, `isDisabled`).
+
+Common prop patterns:
+
+- **Inputs/fields:** `value`, `onChange`, optional `placeholder`, `label`, `helperText`, `errorMessage`, `isDisabled`.
+- **Actions:** `onApplyCoupon`, `onRemoveItem`, `onToggle`.
+- **Async UI:** `isLoading`, `errorMessage`, `successMessage` — toggle visuals only.
+- **Lists:** `items` (array), `onSelectItem`, `onRemoveItem`.
+
+---
+
+## CSS class naming
+
+- All classes **camelCase** and **prefixed with the component's own name** → `freeShippingBarRoot`, `couponInputField`. (See §Loading states below for the unique-class-name rule that prevents bundler dedupe.)
+- CSS Modules for all styling; prefer HTML + CSS over JS-driven styling.
+- Responsiveness via CSS media queries, **not** `isMobile` props.
+- Use only tokens from `references/design-contract.md` — never invent token names.
+
+---
+
+## Images
+
+Pass `src` as a prop so integrators can wire real assets. Use a plain `<img>` (do not assume a framework `<Image />`). Keep the markup inside the component's own folder tree. For icons, follow `references/component-anatomy.md` §Shared assets (inline SVG components, never emoji glyphs).
 
 ---
 
