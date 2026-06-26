@@ -1,0 +1,1002 @@
+version: 1.0.0
+description: >
+  Canonical slot registry for the Ollie Shop default template.
+  Each entry represents one <Slot id="..."> injection point.
+  Agents must load this file to validate slot IDs and understand rendering behavior.
+  Do not resolve slots from memory — every slot ID must exist as an `id` entry here.
+
+schema:
+  id: unique slot identifier string
+  step: "cart | shipping | address | payment | confirmation | global | on-action"
+  mount_phase: "matches mount_phase vocabulary: global | step:cart | step:shipping | step:address | step:payment | step:confirmation | on-action"
+  visibility: "always | conditional"
+  visibility_type: "always | user-interaction | data-state | device"
+  visibility_trigger: "exact source condition or null"
+  device_constraint: "null | mobile-only | desktop-only"
+  default_content: short description of what renders by default
+  context_props: list of props passed to the slot (empty list if none)
+  shared_contexts: list of files/pages where this slot ID appears simultaneously (empty if only one)
+  use_when: null  # agent guidance — when to place a component here (to be filled)
+  notes: additional architectural notes or null
+
+# ─────────────────────────────────────────────
+# GLOBAL SLOTS
+# ─────────────────────────────────────────────
+
+slots:
+
+  - id: header
+    step: global
+    mount_phase: global
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "StepHeader (logo + login) on checkout detail pages; custom header row on cart page"
+    context_props: []
+    shared_contexts: [CartPage.tsx, LayoutWrapper.tsx]
+    use_when: null
+    notes: "Same slot ID renders in two different locations simultaneously. A custom component registered here appears in BOTH the cart page and all checkout detail pages."
+
+  - id: checkout_header_full_page
+    step: global
+    mount_phase: global
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Empty — full-width banner area above the two-column layout"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Void slot. Only renders when displayMode !== 'Full'."
+
+  - id: checkout_summaries
+    step: global
+    mount_phase: global
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "SummariesManager — contact and shipping summary cards shown after each step completes"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "The slot always renders. Its default child (SummariesManager) is guarded by previousSummaries?.length — so the default content may be empty, but a custom component injected here is always mounted."
+
+  - id: checkout_sidebar
+    step: global
+    mount_phase: global
+    visibility: conditional
+    visibility_type: device
+    visibility_trigger: "Parent div has 'hidden lg:flex' — only visible on lg screens and above"
+    device_constraint: desktop-only
+    default_content: "CheckoutSidebar — totalizer, coupon form, proceed button"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: checkout_sidebar_login
+    step: global
+    mount_phase: global
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "props?.flags?.showLoginOnSidebar === true"
+    device_constraint: null
+    default_content: "UserLogin component"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: checkout_coupon_form
+    step: global
+    mount_phase: global
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "CouponForm input"
+    context_props: []
+    shared_contexts: [CheckoutSidebar.tsx]
+    use_when: null
+    notes: null
+
+  - id: checkout_sidebar_totalizer
+    step: global
+    mount_phase: global
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Totalizer — full price table"
+    context_props: []
+    shared_contexts: [CheckoutSidebar.tsx]
+    use_when: null
+    notes: null
+
+  - id: checkout_sidebar_checkout_button
+    step: global
+    mount_phase: global
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Empty — reserved space for custom CTA"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Void slot. No default content."
+
+  - id: step_navigation
+    step: global
+    mount_phase: global
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "showNavigation: (hasEmail && hasValidAddresses && hasQuotes). When false, parent nav is md:hidden"
+    device_constraint: null
+    default_content: "Prev/next navigation buttons row"
+    context_props: [onToggleSummary]
+    shared_contexts: []
+    use_when: null
+    notes: "Slot itself has no conditional — the parent nav element carries the md:hidden class when showNavigation is false."
+
+  - id: step_navigation_place_order_button
+    step: global
+    mount_phase: global
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "!nextStep?.id — only renders as 'place order' when the user is on the last step (no next step). Button hidden when hideSubmit is true or when a custom NextStepButtonElement is active."
+    device_constraint: null
+    default_content: "Place Order / Complete Order button — label changes to 'Complete Order with {paymentMethod}' when a payment method is selected"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Registered in admin slot registry (group: Payment) but NOT implemented as a <Slot> in the template. The button lives inline inside StepNavigation.tsx as a plain <Button> within the parent <Slot id='step_navigation'>. Customizing this slot ID has no effect in the current default template — override step_navigation instead to replace the entire nav bar including this button."
+
+  - id: step_navigation_total_label
+    step: global
+    mount_phase: global
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Total price label inside step navigation bar"
+    context_props: [handleToggleSummary]
+    shared_contexts: []
+    use_when: null
+    notes: "Default child has 'sm:hidden' — only visible below sm breakpoint. The slot itself always renders."
+
+  - id: contact_summary
+    step: global
+    mount_phase: global
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "step.summary must be defined (SummariesManager dynamic slot ID: step.summary.toLowerCase() + '_summary')"
+    device_constraint: null
+    default_content: "Contact summary card shown after the contact/shipping step completes"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Dynamic slot ID generated by SummariesManager. Only rendered when the step has a summary defined."
+
+  - id: shipping_summary
+    step: global
+    mount_phase: global
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "step.summary must be defined (SummariesManager dynamic slot ID)"
+    device_constraint: null
+    default_content: "Shipping summary card shown after shipping is selected"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Dynamic slot ID generated by SummariesManager. Same mechanism as contact_summary."
+
+  - id: footer
+    step: global
+    mount_phase: global
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Footer links content"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Void slot — default child of footer_sidebar."
+
+  - id: footer_all_container
+    step: global
+    mount_phase: global
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Full footer wrapper"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: footer_sidebar
+    step: global
+    mount_phase: global
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Sidebar footer section — contains footer slot as default child"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Inner default div conditionally uses lg:hidden based on hasSidebarFooter and hasFullWidth. Slot itself always renders."
+
+# ─────────────────────────────────────────────
+# CART PAGE SLOTS
+# ─────────────────────────────────────────────
+
+  - id: cart_empty
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "!optimisticCartItems || optimisticCartItems.length === 0"
+    device_constraint: null
+    default_content: "EmptyCart component"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Early return — when this slot renders, the rest of the cart page does not."
+
+  - id: cart_header_full_page
+    step: cart
+    mount_phase: step:cart
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Empty — full-width banner area on cart page"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Void slot."
+
+  - id: cart_title
+    step: cart
+    mount_phase: step:cart
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "h1 with cart title and item count"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: cart_items
+    step: cart
+    mount_phase: step:cart
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "CartList — full item list"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: cart_item
+    step: cart
+    mount_phase: step:cart
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "CartItem — single item row"
+    context_props: [item, onQuantityChange, onRemoveItem, formatPrice, isUnavailable]
+    shared_contexts: []
+    use_when: null
+    notes: "Rendered once per item in optimisticCartItems via renderItem callback."
+
+  - id: cart_item_addons
+    step: cart
+    mount_phase: step:cart
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Empty"
+    context_props: [item]
+    context_props_shape:
+      item:
+        id: "string — SKU identifier"
+        name: "string — e.g. 'Ollie Power Bank Branco - 20000mah'"
+        variant: "string — variant label, e.g. 'Branco - 20000mah'"
+        brand: "string"
+        category: "string"
+        quantity: "number — current cart quantity"
+        price: "number — UNIT PRICE IN CENTS (20000 = $200.00)"
+        originalPrice: "number — list price in cents"
+        available: "boolean — false when out of stock / region-restricted"
+        index: "number — position in session.cartItems (use for UPDATE_ITEMS_QUANTITY)"
+        image: "string — product image URL"
+        uniqueId: "string — VTEX orderForm line identifier (e.g. 'BE128F87...')"
+        url: "string — PDP path"
+    shared_contexts: []
+    use_when: null
+    notes: |
+      Rendered inside cart_item default content, once per item. **Context
+      props arrive at the TOP LEVEL of the component signature, not inside
+      `props`** (see sdk-guide.md §Slot context props vs admin props).
+      Availability signal is `item.available === false`, not `isUnavailable`.
+      Prices are in cents — divide by 100 for display.
+
+  - id: cart_coupon_form
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: device
+    visibility_trigger: "In CartPage.tsx: parent div has 'md:hidden' — only visible below md. Also appears in CartSidebar.tsx (desktop, inside hidden lg:flex parent) and ModalSummary.tsx."
+    device_constraint: mobile-only
+    default_content: "CartCoupon — coupon code input"
+    context_props: []
+    shared_contexts: [CartPage.tsx (md:hidden), CartSidebar.tsx (desktop sidebar), ModalSummary.tsx]
+    use_when: null
+    notes: "Shared slot ID — same component renders in three locations simultaneously: mobile area, desktop sidebar, and cart modal."
+
+  - id: cart_totalizer
+    step: cart
+    mount_phase: step:cart
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Totalizer (mobile) — default child has 'lg:hidden'"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Slot always renders. Default child has lg:hidden — hides on large screens. A custom override does NOT inherit this CSS."
+
+  - id: cart_sidebar
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: device
+    visibility_trigger: "Parent div has 'hidden lg:flex' — only visible on lg screens and above"
+    device_constraint: desktop-only
+    default_content: "CartSidebar — coupon, totalizer, express checkout, proceed button"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: cart_sidebar_login
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "props?.flags?.showLoginOnSidebar === true"
+    device_constraint: null
+    default_content: "UserLogin component"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: cart_sidebar_totalizer
+    step: cart
+    mount_phase: step:cart
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Totalizer with package info"
+    context_props: []
+    shared_contexts: [CartSidebar.tsx, ModalSummary.tsx]
+    use_when: null
+    notes: "Shared slot ID — renders in both desktop sidebar and cart summary modal simultaneously."
+
+  - id: cart_sidebar_checkout_button
+    step: cart
+    mount_phase: step:cart
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Express checkout area with proceed button"
+    context_props: [paymentsExpressComponent]
+    shared_contexts: []
+    use_when: null
+    notes: "Receives paymentsExpressComponent prop — a pre-built CheckoutExpressWrapper React element."
+
+  - id: cart_express_wrapper
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "CartPage.tsx: checkoutExpressConfig.hasCheckoutExpress && !isDesktop | CartSidebar.tsx: isCheckoutExpressEnabled"
+    device_constraint: mobile-only
+    default_content: "Express checkout buttons"
+    context_props: []
+    shared_contexts: [CartPage.tsx, CartSidebar.tsx]
+    use_when: null
+    notes: "Shared slot ID. In CartPage context, also inside lg:hidden nav. Renders only when express checkout is configured."
+
+  - id: cart_mobile_navigation
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: device
+    visibility_trigger: "Parent nav has 'lg:hidden' — only visible below lg breakpoint"
+    device_constraint: mobile-only
+    default_content: "Full mobile bottom navigation bar"
+    context_props: [onToggleSummary]
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: cart_mobile_navigation_total_label
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: device
+    visibility_trigger: "Inherited from parent cart_mobile_navigation (lg:hidden)"
+    device_constraint: mobile-only
+    default_content: "Total price display in mobile nav"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: cart_proceed_to_checkout_button
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: device
+    visibility_trigger: "Inherited from parent cart_mobile_navigation (lg:hidden)"
+    device_constraint: mobile-only
+    default_content: "Primary proceed to checkout button"
+    context_props: [nextStepUrl]
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: cart_address_card
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "Rendered by the host's cart list component when address card is needed"
+    device_constraint: null
+    default_content: "Address card inside cart list"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Slot ID passed via slotsConfig to CartList. Not a direct <Slot> call — rendered internally by the host's cart list component."
+
+  - id: cart_address_card_wrapper
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "Rendered by the host's cart list component"
+    device_constraint: null
+    default_content: "Wrapper around cart address card"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Slot ID passed via slotsConfig to CartList. Rendered internally by the host's cart list component."
+
+  - id: cart_items_package_list_item_header
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "Rendered by the host's cart list component when package group header is needed"
+    device_constraint: null
+    default_content: "Package group header in cart item list"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Slot ID passed via slotsConfig to CartList. Rendered internally by the host's cart list component."
+
+  - id: items_gallery_modal_content
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "Rendered by the host's items gallery component when the modal is opened"
+    device_constraint: null
+    default_content: "Items gallery modal content"
+    context_props: []
+    shared_contexts: [CartPage.tsx, PackageUnvailable.tsx, PackageShipping.tsx]
+    use_when: null
+    notes: "Slot ID passed via slotsConfig in three different template files. Rendered internally by the host's cart list component."
+
+  - id: items_gallery_item_content
+    step: cart
+    mount_phase: step:cart
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "Rendered by the host's items gallery component when the modal is opened"
+    device_constraint: null
+    default_content: "Individual item content inside gallery modal"
+    context_props: []
+    shared_contexts: [CartPage.tsx, PackageUnvailable.tsx, PackageShipping.tsx]
+    use_when: null
+    notes: "Same three-file shared context as items_gallery_modal_content."
+
+# ─────────────────────────────────────────────
+# SHIPPING STEP SLOTS
+# ─────────────────────────────────────────────
+
+  - id: shipping_title
+    step: shipping
+    mount_phase: step:shipping
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "Shipping.tsx: shouldShowDeliveryMethodSelector (hasEmail && hasValidAddresses && hasMultipleDeliveryMethods || isSubmittingAddressWithPostalCode) | ListPackages.tsx: isSinglePackageByPurchase === true"
+    device_constraint: null
+    default_content: "h1 delivery options heading"
+    context_props: []
+    shared_contexts: [Shipping.tsx, ListPackages.tsx]
+    use_when: null
+    notes: "Appears in two files with different conditions. Both must be true for the slot to render in its respective context."
+
+  - id: shipping_list_packages
+    step: shipping
+    mount_phase: step:shipping
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "delivery: shippingData.delivery.packages.length > 0 | pick_up: shippingData.pick_up.packages?.length > 0"
+    device_constraint: null
+    default_content: "Shipping package list (SLAs)"
+    context_props: [type]
+    shared_contexts: []
+    use_when: null
+    notes: "Rendered twice in ListPackages.tsx — once with type='delivery', once with type='pick_up'. Each is guarded by its respective package list length."
+
+  - id: shipping_package_unavailable
+    step: shipping
+    mount_phase: step:shipping
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "unavailableShippingItems?.length > 0"
+    device_constraint: null
+    default_content: "Unavailable items notice"
+    context_props: [items]
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: shipping_package_shipping_options
+    step: shipping
+    mount_phase: step:shipping
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "showShippingOptions: !isCustomDeliverySelected (via the host's package shipping component)"
+    device_constraint: null
+    default_content: "Shipping options list per package"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Not a direct <Slot> call — ID passed via slotsConfig to the host's package shipping component."
+
+  - id: shipping_package_unavailable_item
+    step: shipping
+    mount_phase: step:shipping
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "Rendered by the host when unavailable items exist"
+    device_constraint: null
+    default_content: "Individual unavailable item row"
+    context_props: []
+    shared_contexts: [PackageUnvailable.tsx, CartPage.tsx]
+    use_when: null
+    notes: "Shared — same ID appears in shipping unavailable list and cart page unavailable list. Both via slotsConfig."
+
+  - id: shipping_delivery_method_selector
+    step: shipping
+    mount_phase: step:shipping
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "availableDeliveryMethods.length > 1"
+    device_constraint: null
+    default_content: "Delivery method selector (pickup vs delivery tabs)"
+    context_props: [deliveryMethodOptions, defaultValue, onChange]
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: shipping_address_card
+    step: shipping
+    mount_phase: step:shipping
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "Inside pickup or delivery section — only renders when that section has packages"
+    device_constraint: null
+    default_content: "Address card for the selected delivery address"
+    context_props: [address, onEditAddress]
+    shared_contexts: []
+    use_when: null
+    notes: "Rendered by renderAddressCard helper inside ListPackages.tsx, called from both renderPickupSection and renderDeliverySection."
+
+# ─────────────────────────────────────────────
+# ADDRESS STEP SLOTS
+# ─────────────────────────────────────────────
+
+  - id: address_page
+    step: address
+    mount_phase: step:address
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "!addressToShipSelected || !session.customer — WrapperAddress returns null when either is missing"
+    device_constraint: null
+    default_content: "Full address step (form + navigation)"
+    context_props: [stepNavigation]
+    shared_contexts: []
+    use_when: null
+    notes: "stepNavigation prop is an object with { props: StepNavigationProps, Component: (navigationProps) => JSX.Element } — allows custom component to render navigation primitives."
+
+  - id: shipping_address_details_form
+    step: address
+    mount_phase: step:address
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "Inherits parent address_page guard: addressToShipSelected && session.customer must be truthy"
+    device_constraint: null
+    default_content: "AddressDetailsForm — address fields"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Always renders when address_page renders. Nested inside address_page slot default content."
+
+# ─────────────────────────────────────────────
+# PAYMENT STEP SLOTS
+# ─────────────────────────────────────────────
+
+  # Always-visible (mount as soon as payment step is active)
+
+  - id: payment_method_options
+    step: payment
+    mount_phase: step:payment
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "PaymentMethodOptions — payment method tab selector"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Slot is unconditional. Wrapping div has opacity-50 class when orderIsTotalPaidWithGiftCard, but the slot itself always renders."
+
+  - id: payment_option_gift_card
+    step: payment
+    mount_phase: step:payment
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "GiftCard component"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Renders unconditionally in Payment.tsx outside the payment method tab accordion."
+
+  - id: saved_card_options
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "payment?.savedCards && payment?.savedCards.length > 0"
+    device_constraint: null
+    default_content: "SavedCardOptions — saved card selector"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: checkout_totalizer
+    step: payment
+    mount_phase: step:payment
+    visibility: always
+    visibility_type: always
+    visibility_trigger: null
+    device_constraint: null
+    default_content: "Totalizer (mobile) — default child div has 'md:hidden'"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Slot always renders in payment step. Default child has md:hidden. A custom override does NOT inherit this CSS class."
+
+  # Conditionally rendered — user interaction required (payment method tab selection)
+  # All slots below only mount when the user selects the corresponding payment method tab.
+  # Mechanism: PaymentContent/index.tsx dispatches via Record<string, JSX.Element> keyed by
+  # paymentMethod type string. Guard: if (!payment) return null.
+  # AGENT RULE: Never place a primary CTA or any element that must be immediately visible
+  # at a payment_option_* slot. Use payment_method_options for always-visible components.
+
+  - id: payment_option_pix
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'pix' (user selects PIX tab)"
+    device_constraint: null
+    default_content: "PIX payment content"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: payment_option_credit_card
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'credit_card' (user selects credit card tab)"
+    device_constraint: null
+    default_content: "CreditCard form"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "NEVER place a CTA or confirm button here — component does not exist in DOM until user clicks the credit card tab."
+
+  - id: payment_option_promissory
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'promissory' (user selects promissory tab)"
+    device_constraint: null
+    default_content: "Promissory note form"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: payment_option_paypal
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'paypal' OR paymentMethod === 'paypalCp' (user selects PayPal tab)"
+    device_constraint: null
+    default_content: "Paypal component"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Same slot ID maps to two dictionary keys ('paypal' and 'paypalCp') in PaymentContent. Both render the same Paypal component."
+
+  - id: payment_option_apple_pay
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'apple_pay' (user selects Apple Pay tab)"
+    device_constraint: null
+    default_content: "Empty — void slot, no default child"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Self-closing slot. The visible Apple Pay button UI is a separate <ApplePayButton> component in Payment.tsx gated by selectedPaymentType === 'apple_pay'."
+
+  - id: payment_option_google_pay
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'google_pay' (user selects Google Pay tab)"
+    device_constraint: null
+    default_content: "Empty — void slot, no default child"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Self-closing slot."
+
+  - id: payment_option_click_to_pay
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'click_to_pay' (user selects Click to Pay tab)"
+    device_constraint: null
+    default_content: "Empty — void slot, no default child"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Self-closing slot."
+
+  - id: payment_option_pagaleve_parcelado
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'pagaleve_parcelado' (user selects this PagaLeve tab)"
+    device_constraint: null
+    default_content: "PagalevePixParcelado component"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: payment_option_pagaleve_avista_transparente
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'pagaleve_avista_transparente'"
+    device_constraint: null
+    default_content: "Pix component (reused for this PagaLeve variant)"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: payment_option_pagaleve_parcelado_transparente
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'pagaleve_parcelado_transparente'"
+    device_constraint: null
+    default_content: "PagalevePixParcelado component"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: payment_option_pagaleve_mensal_transparente
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'pagaleve_mensal_transparente'"
+    device_constraint: null
+    default_content: "PagalevePixParcelado component"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: payment_option_affirm
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'affirm' (user selects Affirm tab)"
+    device_constraint: null
+    default_content: "Affirm BNPL content"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: payment_option_nubank
+    step: payment
+    mount_phase: step:payment
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "paymentMethod === 'nubank' (user selects Nubank tab)"
+    device_constraint: null
+    default_content: "NuPay component"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+# ─────────────────────────────────────────────
+# ORDER CONFIRMATION SLOTS
+# ─────────────────────────────────────────────
+
+  - id: order_header
+    step: confirmation
+    mount_phase: step:confirmation
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "order.fulfillmentOrders.length > 0 (Order component returns null otherwise)"
+    device_constraint: null
+    default_content: "Logo / header row on confirmation page"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: order_details
+    step: confirmation
+    mount_phase: step:confirmation
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "Inherits order.fulfillmentOrders.length > 0 guard"
+    device_constraint: null
+    default_content: "Full order details (contact, shipping, payment summaries)"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "order_totalizer is nested inside this slot's default content."
+
+  - id: order_totalizer
+    step: confirmation
+    mount_phase: step:confirmation
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "Inherits order.fulfillmentOrders.length > 0 guard"
+    device_constraint: null
+    default_content: "Totalizer — order totals"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: "Nested inside order_details default content."
+
+  - id: order_footer
+    step: confirmation
+    mount_phase: step:confirmation
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "Inherits order.fulfillmentOrders.length > 0 guard"
+    device_constraint: null
+    default_content: "Footer / continue shopping row"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+# ─────────────────────────────────────────────
+# MODAL / ON-ACTION SLOTS
+# ─────────────────────────────────────────────
+
+  - id: modal_user_identified
+    step: on-action
+    mount_phase: on-action
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "showModal prop passed to the Modal component drives visibility"
+    device_constraint: null
+    default_content: "User identified modal"
+    context_props: [onClose, showModal]
+    shared_contexts: []
+    use_when: null
+    notes: "Slot itself has no conditional — the Modal component receives showModal prop."
+
+  - id: modal_profile_summary
+    step: on-action
+    mount_phase: on-action
+    visibility: conditional
+    visibility_type: data-state
+    visibility_trigger: "customer?.firstName must be truthy"
+    device_constraint: null
+    default_content: "Profile summary card inside email edit modal"
+    context_props: []
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: modal_change_delivery_address
+    step: on-action
+    mount_phase: on-action
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "Modal visibility controlled by showModal prop"
+    device_constraint: null
+    default_content: "Delivery address selection modal"
+    context_props: [onChange, onShowNewAddressModal, onClose]
+    shared_contexts: []
+    use_when: null
+    notes: null
+
+  - id: modal_change_pickup_address
+    step: on-action
+    mount_phase: on-action
+    visibility: conditional
+    visibility_type: user-interaction
+    visibility_trigger: "Modal visibility controlled by showModal prop"
+    device_constraint: null
+    default_content: "Pickup address selection modal"
+    context_props: [onChange, onChangeType, onClose]
+    shared_contexts: []
+    use_when: null
+    notes: null
