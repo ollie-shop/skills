@@ -53,9 +53,9 @@ The delivery method picker shown inside a single shipping package. Lists every q
 If the user has no Figma / screenshot:
 
 - Use neutral CSS-modules markup: `<ul>` of `<li><button>` rows. No third-party UI kit.
-- Style with the host's CSS variables for color (`--color-primary`, `--surface`, etc.). Never hardcode brand colors.
+- Style with the host's CSS variables for color (`--color-secondary`, `--surface`, etc.). Never hardcode brand colors.
 - Mobile-first; two-column top row uses `display: flex; justify-content: space-between;`.
-- Selected state: 2px border in `var(--color-primary)`, `aria-pressed="true"`. Resting state: 1px neutral border at low opacity.
+- Selected state: 2px border in `var(--color-secondary)`, `aria-pressed="true"`. Resting state: 1px neutral border at low opacity. (`--color-primary` is reserved for the primary CTA — don't use it here.)
 - Currency: derive locale and currency code from `session.locale`. Do not hardcode `"en-US"` / `"USD"` — see Antipatterns.
 - Date formatting: use `Intl.DateTimeFormat` with the session locale; choose `weekday: "long"` for desktop and `weekday: "short"` for mobile, both gated by CSS media queries.
 

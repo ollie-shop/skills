@@ -13,8 +13,8 @@ DaisyUI convention: `--color-{role}` + `--color-{role}-content` for text/icon on
 | Family | Tokens | Use for |
 |---|---|---|
 | Base | `--color-base-100`, `--color-base-200`, `--color-base-300`, `--color-base-content` | Page/card background, subtle surfaces, dividers, default text |
-| Primary | `--color-primary`, `--color-primary-content` | CTA, links, focus ring |
-| Secondary | `--color-secondary`, `--color-secondary-content` | Brand accent, promotional badges |
+| Primary | `--color-primary`, `--color-primary-content` | Primary CTA only (e.g. the main submit/continue button) — nothing else |
+| Secondary | `--color-secondary`, `--color-secondary-content` | Rest of the interface's accent needs — links, active/selected borders, focus rings, badges |
 | Accent / Neutral | `--color-accent(-content)`, `--color-neutral(-content)` | Punctual highlights, neutral chips |
 | Status | `--color-info`, `--color-success`, `--color-warning`, `--color-error` (+ `-content`) | Inline icons/borders |
 | Alert surfaces | `--color-alert-{info\|success\|warning\|error}(-content)` | Toast/alert backgrounds |
@@ -61,7 +61,7 @@ Checkout layout: single-column on mobile, two-column (fixed summary on the right
 ### Canonical focus ring (always via `:focus-visible`, never `:focus`)
 
 ```css
-outline: 2px solid var(--color-primary);
+outline: 2px solid var(--color-secondary);
 outline-offset: 2px;
 border-radius: inherit;
 ```
@@ -70,8 +70,8 @@ For inputs, swap `outline` for a colored `box-shadow` on the border:
 
 ```css
 outline: none;
-border-color: var(--color-primary);
-box-shadow: 0 0 0 2px var(--color-primary);
+border-color: var(--color-secondary);
+box-shadow: 0 0 0 2px var(--color-secondary);
 ```
 
 ### Per element
@@ -80,8 +80,8 @@ box-shadow: 0 0 0 2px var(--color-primary);
 |---|---|---|---|---|---|
 | **Button** | variant bg | darken ~8% via `color-mix(in oklch, var(--color-primary) 92%, black)` | `translateY(1px)` (optional) | `opacity: 0.5`, `cursor: not-allowed` | use `danger` variant |
 | **Input** | border `1px solid --color-base-300`, bg `--color-base-100` | border `--color-base-content` | — | `opacity: 0.5`, bg `--color-base-200` | border `2px solid --color-error` + helper text |
-| **Link** | `--color-primary`, no underline | underline + `text-underline-offset: 2px` | `opacity: 0.8` | `opacity: 0.5`, `pointer-events: none` | — |
-| **Clickable card** | subtle border/shadow | stronger shadow or `--color-primary` border | `transform: scale(0.995)` (optional) | `opacity: 0.5`, `pointer-events: none` | — |
+| **Link** | `--color-secondary`, no underline | underline + `text-underline-offset: 2px` | `opacity: 0.8` | `opacity: 0.5`, `pointer-events: none` | — |
+| **Clickable card** | subtle border/shadow | stronger shadow or `--color-secondary` border | `transform: scale(0.995)` (optional) | `opacity: 0.5`, `pointer-events: none` | — |
 
 Transitions: `200ms ease-out` standard. Collapse/expand `100ms ease-in-out`. Modal `300ms`.
 
@@ -189,8 +189,8 @@ Durations: `fast 100ms` (hover, collapse), `base 200ms` (state changes, floating
 .input:hover:not(:disabled) { border-color: var(--color-base-content); }
 .input:focus-visible {
   outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-primary);
+  border-color: var(--color-secondary);
+  box-shadow: 0 0 0 2px var(--color-secondary);
 }
 .input:disabled { background: var(--color-base-200); opacity: 0.5; cursor: not-allowed; }
 
@@ -215,7 +215,7 @@ Durations: `fast 100ms` (hover, collapse), `base 200ms` (state changes, floating
   transition: background-color 200ms ease-out, transform 100ms ease-out;
 }
 .button:hover:not(:disabled) { background: color-mix(in oklch, var(--color-primary) 92%, black); }
-.button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.button:focus-visible { outline: 2px solid var(--color-secondary); outline-offset: 2px; }
 .button:active:not(:disabled) { transform: translateY(1px); }
 .button:disabled { opacity: 0.5; cursor: not-allowed; }
 
