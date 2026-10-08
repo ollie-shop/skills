@@ -608,4 +608,5 @@ The general authoring rules (loading/error states, design tokens, a11y, complexi
 - **Never assume a specific template layout.** Design against the slot's contract (see the slot's `INSTRUCTIONS.md`), not the current template's chrome. Templates evolve.
 - **Do not use slot ids outside the `ComponentSlot` enum.** Made-up ids fail silently at registration.
 - **Do not share React Context across component bundles.** Each component is bundled independently — `React.createContext(...)` values do not cross bundles. Coordinate via SDK actions or the DOM-event pattern in §State Management.
+- **Skip optional content on slow connections.** Recommendation shelves and upsell on the cart do not mount when the shopper has data saver on or a 2g link. Decide after mount, gate above the shelf, never gate required steps — see [`patterns/slow-connection-gate.md`](patterns/slow-connection-gate.md).
 - **Asset imports** — only `.ts` / `.tsx` / `.js` / `.jsx` / `.css` are supported by the bundler. Use inline SVG React components or data URIs for images; see `component-anatomy.md` §Shared assets for the canonical icon pattern.

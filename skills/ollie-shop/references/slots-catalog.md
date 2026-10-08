@@ -37,9 +37,9 @@ When a user says "customize the PIX section", resolve to `payment_option_pix` â€
 |---|---|
 | `cart_empty` | Empty-cart state. Default: illustration + "Back to Home". |
 | `cart_title` | Cart heading (e.g. "Cart Â· N items"). |
-| `cart_items` | Item list area. Default renders the native list with quantity controls. |
+| `cart_items` | Item list area. Default renders the native list with quantity controls. A recommendation shelf composed here is optional content: skip it on slow connections (see [`patterns/slow-connection-gate.md`](patterns/slow-connection-gate.md)). |
 | `cart_item` | One row per cart item. Receives the item as a prop. |
-| `cart_item_addons` | Empty by default. Renders once per item, with `item` prop. Good place for upsell or compliance content. |
+| `cart_item_addons` | Empty by default. Renders once per item, with `item` prop. Good place for upsell or compliance content; gate upsell on slow connections ([`patterns/slow-connection-gate.md`](patterns/slow-connection-gate.md)). |
 | `cart_item_details` | Empty by default. Renders once per item between the product title and its unit price, with `item` prop. Good place for badges/tags or other per-item content. |
 | `card_item_base` | Base wrapper around an item card. |
 | `cart_items_package_list_item` | Whole shipping-package card on the cart (header + items). Mounts once per package with `shippingPackage`, `itemsInPackage` and `itemsCountInPackage`. Rendering nothing hides that package. |
