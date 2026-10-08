@@ -83,7 +83,7 @@ Every component handles all three. Rules for the loading state:
 - **No composed classNames in the skeleton** (`${styles.a} ${styles.b}` multiplies failure modes).
 - When in doubt: solid-color `<div>` sized to expected content. Boring beats broken.
 
-**Optional content on slow connections.** A recommendation shelf, upsell strip or any other optional block on the cart does not mount when `navigator.connection.saveData` is true or `effectiveType` is `2g`/`slow-2g`. Decide once after mount (state starts undecided and renders nothing), and gate above the shelf so it never fetches. Never gate required steps. Full pattern: [`patterns/slow-connection-gate.md`](patterns/slow-connection-gate.md).
+**Optional content on slow connections.** A recommendation shelf, upsell strip or any other optional block on the cart does not mount when the shopper has data saver on (`saveData`) or a 2g connection. Use `useSlowConnection` from `@ollie-shop/sdk` and render only when `ready && !slow` (`ready` is false until after mount); gate above the shelf so it never fetches. Never gate required steps. On an SDK without the hook, use the local fallback in the pattern. Full pattern: [`patterns/slow-connection-gate.md`](patterns/slow-connection-gate.md).
 
 For errors: fall back to a safe UI (`[]`, `null`, hide). Every slot is wrapped in an `ErrorBoundary` as a last resort — do not try to catch everything.
 

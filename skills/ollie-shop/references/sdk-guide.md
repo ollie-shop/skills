@@ -476,6 +476,29 @@ useNavigation(() => {
 });
 ```
 
+### `useSlowConnection`
+
+```ts
+function useSlowConnection(): {
+  ready: boolean;
+  slow: boolean;
+  reason: "saveData" | "2g" | null;
+};
+```
+
+Reports whether the shopper is on a slow connection or asked the browser to save data, so a component can skip **optional** content (recommendation shelves, upsell) instead of loading it. `slow` is true when `navigator.connection.saveData` is on or `effectiveType` is `2g`/`slow-2g`; `reason` says which (`"saveData"` or `"2g"`, `null` when not slow). A browser with no `navigator.connection` (Safari, iOS, Firefox) is never reported as slow.
+
+`ready` is `false` until after mount — the checkout server-renders slots, where there is no `navigator` — so render optional content only when `ready && !slow`:
+
+```tsx
+const { ready, slow } = useSlowConnection() ?? {};
+return ready && !slow ? <RecommendationsShelf /> : null;
+```
+
+Gate **above** the shelf so a slow shopper never mounts it, and never gate required checkout steps. Full pattern, and the local fallback for stores on an SDK version without this hook: [`patterns/slow-connection-gate.md`](patterns/slow-connection-gate.md).
+
+> **Availability:** added to `@ollie-shop/sdk` in a release that is not out yet (version to be confirmed before this merges). Until a store is on it, use the fallback in the pattern file.
+
 ---
 
 ## State Management
@@ -596,6 +619,8 @@ Two concrete pitfalls seen in the wild:
 - **No imperative `sdk.cart.*` namespace.** Mutations go through `useCheckoutAction(...)` (e.g. `UPDATE_COUPONS`, `ADD_ITEMS`, `UPDATE_ITEMS_QUANTITY`). There is no `sdk.cart.applyCoupon()` / `sdk.cart.setMarketingTags()` / etc.
 - **No shared React Context across components.** Each component is its own bundle; `React.createContext(...)` values do not cross bundle boundaries. Coordinate state via SDK actions, not context.
 
+The one sanctioned exception is a hook that is documented in §SDK Hooks but newer than the SDK a store pins (today: `useSlowConnection`). Read it off the namespace defensively and fall back to a local implementation, as in [`patterns/slow-connection-gate.md`](patterns/slow-connection-gate.md) — that is a documented hook with a version fallback, not a stub of a missing capability.
+
 Anything else you reach for that isn't in §SDK Hooks — telemetry, toasts, imperative navigation, a11y announcers, persistent storage helpers, etc. — also does not exist. If your component genuinely needs one, surface the gap to the skill maintainer instead of stubbing `sdk.foo()` in shipped code.
 
 ---
@@ -608,5 +633,5 @@ The general authoring rules (loading/error states, design tokens, a11y, complexi
 - **Never assume a specific template layout.** Design against the slot's contract (see the slot's `INSTRUCTIONS.md`), not the current template's chrome. Templates evolve.
 - **Do not use slot ids outside the `ComponentSlot` enum.** Made-up ids fail silently at registration.
 - **Do not share React Context across component bundles.** Each component is bundled independently — `React.createContext(...)` values do not cross bundles. Coordinate via SDK actions or the DOM-event pattern in §State Management.
-- **Skip optional content on slow connections.** Recommendation shelves and upsell on the cart do not mount when the shopper has data saver on or a 2g link. Decide after mount, gate above the shelf, never gate required steps — see [`patterns/slow-connection-gate.md`](patterns/slow-connection-gate.md).
+- **Skip optional content on slow connections.** Recommendation shelves and upsell on the cart do not mount when the shopper has data saver on or a 2g link. Use `useSlowConnection` (render only when `ready && !slow`), gate above the shelf, never gate required steps; on an SDK without the hook, use the local fallback — see [`patterns/slow-connection-gate.md`](patterns/slow-connection-gate.md).
 - **Asset imports** — only `.ts` / `.tsx` / `.js` / `.jsx` / `.css` are supported by the bundler. Use inline SVG React components or data URIs for images; see `component-anatomy.md` §Shared assets for the canonical icon pattern.

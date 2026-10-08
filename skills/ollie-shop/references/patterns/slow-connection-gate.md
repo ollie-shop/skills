@@ -6,13 +6,16 @@ skeleton. On a slow link that traffic competes with the checkout itself, and the
 pays for it with a slower cart for content they never asked for.
 
 The fix is to **not mount the optional block at all** when the browser says the shopper is
-on a slow connection or asked to save data. This is [adaptive
+on a slow connection or asked to save data. The SDK ships a hook for it, `useSlowConnection`;
+use that. A local implementation is the fallback for stores on an SDK version without the
+hook. This is [adaptive
 loading](https://web.dev/articles/adaptive-loading-cds-2019): serve the lighter experience
 to the shoppers who need it, the full one to everyone else.
 
 This is a best practice for every store, for every optional block on the cart page. The
 rules below come from a production cart that shipped the gate twice — the first version
-flickered, and the second one is what this page documents.
+flickered, and the second one is what this page documents. The hook implements rules 1 and 4
+for you; rules 2 and 3 are still yours.
 
 ---
 
@@ -43,8 +46,9 @@ during render therefore answers "not slow" in the HTML, ships the shelf skeleton
 disagrees with itself on hydration: the skeleton appears, then is pulled. That is a flicker
 and a hydration mismatch.
 
-Keep the verdict in state that starts **undecided**, and set it from `useEffect`. While it
-is undecided, render nothing:
+The hook does this for you: `ready` is `false` until after mount, and optional content
+renders only when `ready && !slow`. In the local fallback, keep the verdict in state that
+starts **undecided** and set it from `useEffect`. While it is undecided, render nothing:
 
 | State | Meaning | Renders |
 |---|---|---|
@@ -80,7 +84,42 @@ the paint can land after the shelf has mounted, it makes the shelf appear and th
 
 ---
 
-## Implementation
+## Primary technique: `useSlowConnection`
+
+```tsx
+import type { ReactNode } from "react";
+import { useSlowConnection } from "@ollie-shop/sdk";
+import RecommendationsShelf from "../RecommendationsShelf";
+
+export default function CartItems({ children }: { children?: ReactNode }) {
+  const { ready, slow } = useSlowConnection() ?? {};
+
+  return (
+    <div>
+      {children}
+      {ready && !slow ? <RecommendationsShelf /> : null}
+    </div>
+  );
+}
+```
+
+The hook returns `{ ready, slow, reason }` (full signature in `sdk-guide.md` §
+`useSlowConnection`). Render the optional content only when `ready && !slow`: `ready` is
+`false` until after mount, so the server HTML and the first paint carry nothing, and the
+shelf never mounts on a slow link. `reason` is `"saveData"`, `"2g"` or `null`; read it only
+if you want to log why the shelf was skipped.
+
+The check is above the shelf, in the component that owns the slot, so rule 2 holds: no fetch,
+no images, no skeleton when `slow` is true.
+
+---
+
+## Fallback: local implementation (SDK without the hook)
+
+The hook ships in a newer SDK release than some stores pin. Until a store upgrades, read the
+hook off the SDK namespace and fall back to a local copy of the same rule. The shared hook
+(`commons/hooks/useSlowConnection.ts`) keeps the host's shape, so the component above does
+not change when the store upgrades — only this file gets deleted.
 
 The classifier (`commons/slowConnection.ts`) — a plain module, no React:
 
@@ -125,38 +164,57 @@ export function slowConnectionReason(): SlowReason | null {
 }
 ```
 
-The gate (`components/CartItems/index.tsx`), in the component that owns the slot. The state
-starts `undefined` and the effect runs once, after mount:
+The shared hook (`commons/hooks/useSlowConnection.ts`) — the host's hook when the SDK has it,
+the local one otherwise. The lookup happens once, at module load, so the component always
+calls the same hooks in the same order:
 
-```tsx
+```ts
 /**
- * Owns the `cart_items` slot: the item list, then the recommendations shelf
- * when the shopper is not on a slow connection.
+ * Slow-connection verdict for optional cart content: the SDK hook when this store's SDK
+ * has it, the local classifier otherwise. Same `{ ready, slow, reason }` shape either way.
  */
-import { useEffect, useState, type ReactNode } from "react";
-import RecommendationsShelf from "../RecommendationsShelf";
-import { slowConnectionReason, type SlowReason } from "../../commons/slowConnection";
+import { useEffect, useState } from "react";
+import * as OllieSdk from "@ollie-shop/sdk";
+import { slowConnectionReason, type SlowReason } from "../slowConnection";
 
-export default function CartItems({ children }: { children?: ReactNode }) {
-  const [slowReason, setSlowReason] = useState<SlowReason | null>();
-  useEffect(() => setSlowReason(slowConnectionReason()), []);
+export type SlowConnection = {
+  ready: boolean;
+  slow: boolean;
+  reason: SlowReason | null;
+};
 
-  return (
-    <div>
-      {children}
-      {slowReason === null ? <RecommendationsShelf /> : null}
-    </div>
-  );
+const hostUseSlowConnection = (
+  OllieSdk as unknown as { useSlowConnection?: () => SlowConnection }
+).useSlowConnection;
+
+function useLocalSlowConnection(): SlowConnection {
+  const [reason, setReason] = useState<SlowReason | null>();
+  useEffect(() => setReason(slowConnectionReason()), []);
+  return {
+    ready: reason !== undefined,
+    slow: Boolean(reason),
+    reason: reason ?? null,
+  };
 }
+
+export const useSlowConnection: () => SlowConnection =
+  hostUseSlowConnection ?? useLocalSlowConnection;
 ```
 
-`slowReason === null` is deliberate: `undefined` (not decided) and a reason string (skip) both
-render nothing, and only a decided "fine" mounts the shelf. Do not simplify it to
-`!slowReason` — that mounts the shelf during the undecided first paint, which is rule 1's
-bug.
+The component imports it from `commons/hooks/useSlowConnection` instead of `@ollie-shop/sdk`;
+everything else in the example above is identical. On a store that has the hook, the
+`hostUseSlowConnection` branch is taken and the local code never runs.
 
 Notes on the pieces:
 
+- **Why the namespace import.** A named `import { useSlowConnection }` from an SDK that lacks
+  it is a type error in the editor and `undefined` at runtime. Reading it off the namespace
+  with a cast works on both. This is the same defensive read used for host hooks that are
+  newer than the published typings.
+- **`slowReason === null`, not `!slowReason`.** In the local state, `undefined` (not decided)
+  and a reason string (skip) both render nothing, and only a decided "fine" mounts the shelf.
+  `ready: reason !== undefined` keeps that distinction in the hook's shape. `!slowReason`
+  would mount the shelf during the undecided first paint, which is rule 1's bug.
 - **The `logged` latch.** The checkout re-evaluates a slot bundle many times while the
   session hydrates (16 times in ~55 ms in production), and each evaluation gets a fresh
   module-level flag, so expect ~16 skip lines per page load. Count skips per session, not per
@@ -172,13 +230,13 @@ Notes on the pieces:
 
 ## Checklist
 
-- [ ] The verdict starts `undefined` and is set from `useEffect` — no `useMemo` or direct call in render
-- [ ] While undecided, the optional block renders nothing (no skeleton, no placeholder)
+- [ ] The store's SDK has `useSlowConnection`: import it from `@ollie-shop/sdk`. If not, use the fallback hook that reads it off the namespace
+- [ ] Optional content renders only when `ready && !slow` — nothing (no skeleton, no placeholder) while undecided
+- [ ] Fallback only: the verdict starts `undefined` and is set from `useEffect` — no `useMemo` or direct call in render
 - [ ] The check lives above the shelf: on a slow connection the shelf never mounts — no fetch, no images
-- [ ] Only `saveData` and `effectiveType` (`"2g"` / `"slow-2g"`) are read — no FCP, no page timing
-- [ ] A missing `navigator.connection` means "not slow"
+- [ ] Fallback only: just `saveData` and `effectiveType` (`"2g"` / `"slow-2g"`) are read — no FCP, no page timing; a missing `navigator.connection` means "not slow"
 - [ ] Only optional content is gated — never a required step, totals or the coupon form
-- [ ] The skip is logged once with its `reason` (`skipped-slow-connection`)
+- [ ] The skip is logged with its `reason` (`skipped-slow-connection`)
 
 ---
 
@@ -186,4 +244,5 @@ Notes on the pieces:
 
 - [component-authoring-cheatsheet.md](../component-authoring-cheatsheet.md) § 6 — loading, error and empty states
 - [slots-catalog.md](../slots-catalog.md) — `cart_items`, `cart_item_addons` and the other cart-page slots
+- [sdk-guide.md](../sdk-guide.md) § `useSlowConnection` — the hook's signature
 - [file-organization.md](../file-organization.md) — where `commons/` helpers and extracted subcomponents live

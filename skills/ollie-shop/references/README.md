@@ -53,7 +53,7 @@ Each file below is loaded only when the cheatsheet doesn't cover the specific ca
 | [SDK Guide](sdk-guide.md) | Full hook and action signatures, session shape, replace vs augment strategy, slot context props vs admin props, error handling, known-absent APIs. |
 | [Hub Functions](hub-functions.md) | Hub function handler shape, trigger configuration, resolver/enricher/enforce patterns, cross-function state via cookies. |
 | [Function Debugging](function-debugging.md) | When a deployed function misbehaves: triage order, symptom → cause → confirmation map, and the runtime limits that fail silently (`sessionStorage` ceiling, invocation time budget). |
-| [Slow-Connection Gate](patterns/slow-connection-gate.md) | Before adding a recommendation shelf, upsell or any optional block to the cart: skip it on `saveData` / 2g connections, decide after mount, gate above the shelf. |
+| [Slow-Connection Gate](patterns/slow-connection-gate.md) | Before adding a recommendation shelf, upsell or any optional block to the cart: skip it on `saveData` / 2g connections with `useSlowConnection` (or the local fallback), gate above the shelf. |
 | [Slots Catalog](slots-catalog.md) | The list of stable slot ids in the default template, plus dynamic slot patterns (e.g. `payment_option_{{ paymentMethodName }}`). |
 | [CLI Reference](cli-reference.md) | Every `ollieshop` command, flags, examples. Deploy flows, what the deploy bundle carries and how `.ollieignore` trims it, version management, business rules. |
 | [Component Design Flow](component-design-flow.md) | The cross-cutting questions (Figma, Case A vs B, template gap, library match) that run *before* opening a component's `INSTRUCTIONS.md`. Mode 6 loads this first, alongside the cheatsheet. |
